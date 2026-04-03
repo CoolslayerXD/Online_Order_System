@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>線上點餐系統</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; background-color: #f8f9fa; color: #333; }
+        .container { max-width: 500px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h2 { text-align: center; color: #2c3e50; }
+        .menu-item { display: flex; justify-content: space-between; align-items: center; padding: 15px 0; border-bottom: 1px solid #eee; }
+        .btn { background-color: #3498db; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; width: 100%; font-size: 16px; margin-top: 15px; }
+        .btn:hover { background-color: #2980b9; }
+        .btn-secondary { background-color: #95a5a6; }
+        .qty-controls { display: flex; align-items: center; gap: 10px; }
+        .qty-btn { width: 30px; height: 30px; border-radius: 50%; border: 1px solid #ddd; background: #fff; font-size: 18px; cursor: pointer; }
+        .hidden { display: none; }
+        .order-box { background: #e8f8f5; padding: 15px; border-radius: 5px; text-align: center; margin: 20px 0; border: 2px dashed #1abc9c; }
+        .admin-link { text-align: center; display: block; margin-top: 30px; font-size: 12px; color: #ccc; text-decoration: none; }
+        .admin-order { background: #fff3cd; padding: 10px; margin-bottom: 10px; border-radius: 5px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div id="view-menu">
+        <h2>歡迎點餐</h2>
+        <div id="menu-list">
+            </div>
+        <button class="btn" onclick="goToConfirm()">確認餐點，下一步</button>
+    </div>
+
+    <div id="view-confirm" class="hidden">
+        <h2>確認您的訂單</h2>
+        <div id="order-summary" style="margin-bottom: 20px; line-height: 1.8;"></div>
+        <button class="btn" onclick="submitOrder()">送出訂單</button>
+        <button class="btn btn-secondary" onclick="goBackToMenu()">返回修改</button>
+    </div>
+
+    <div id="view-success" class="hidden">
+        <h2>訂單已送出！</h2>
+        <div class="order-box">
+            <p>您的訂單編號：</p>
+            <h3 id="display-order-id" style="color: #e74c3c; font-size: 24px;"></h3>
+            <p style="color: #c0392b; font-weight: bold;">⚠️ 請務必截圖此畫面作為取餐與付款證明！</p>
+        </div>
+        <p style="text-align: center;">請至櫃檯出示此編號並進行付款，謝謝您的光臨！</p>
+    </div>
+
+    <div id="view-admin" class="hidden">
+        <h2>店家管理台：未付款訂單</h2>
+        <div id="admin-order-list">載入中...</div>
+        <button class="btn btn-secondary" onclick="location.reload()">返回首頁</button>
+    </div>
+
+    <a href="#" class="admin-link" onclick="goToAdmin()">店家管理登入</a>
+</div>
+
+<script>
+    // 填入你的 GAS 網頁應用程式 URL
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbxLgIJFuF4Dpw0UKjh-p25jr6nCeKEE7E_XRy9ZfHQK-uNoaUUFjjQOjU812SDn2PcWFw/exec"; 
+
+    const menuData = [
+        { id: 'A', name: '特製餐點 A', price: 120 },
+        { id: 'B', name: '經典餐點 B', price: 150 },
+        { id: 'C', name: '人氣餐點 C', price: 180 }
+    ];
+    let cart = { 'A': 0, 'B': 0, 'C': 0 };
+
+    // 初始化菜單
+    function initMenu() {
+        const menuList = document.getElementById('menu-list');
+        menuList.innerHTML = '';
+        menuData.forEach(item => {
+            menuList.innerHTML += `
+                <div class="menu-item">
+                    <div>
+                        <strong>${item.name}</strong><br>
+                        <small>$${item.price}</small>
+                    </div>
+                    <div class="qty-controls">
+                        <button class="qty-btn" onclick="updateQty('${item.id}', -1)">-</button>
+                        <span id="qty-${item.id}">0</span>
+                        <button class="qty-btn" onclick="updateQty('${item.id}', 1)">+</button>
+                    </div>
+                </div>
+            `;
+        });
+    }
+
+    function updateQty(id, change) {
+        if (cart[id] + change >= 0) {
+            cart[id] += change;
+            document.getElementById(`qty-${id}`).innerText = cart[id];
+        }
+    }
+
+    // 切換至確認頁面
+    function goToConfirm() {
+        let totalQty = cart['A'] + cart['B'] + cart['C'];
+        if (totalQty === 0) {
+            alert('請至少選擇一項餐點！');
+            return;
+        }
+
+        let summaryHtml = '';
+        let totalPrice = 0;
+        menuData.forEach(item => {
+            if (cart[item.id] > 0) {
+                let subtotal = cart[item.id] * item.price;
+                summaryHtml += `${item.name} x ${cart[item.id]} = $${subtotal}<br>`;
+                totalPrice += subtotal;
+            }
+        });
+        summaryHtml += `<hr><strong>總計：$${totalPrice}</strong>`;
+        
+        document.getElementById('order-summary').innerHTML = summaryHtml;
+        switchView('view-confirm');
+    }
+
+    function goBackToMenu() {
+        switchView('view-menu');
+    }
+
+    // 送出訂單給 GAS
+    function submitOrder() {
+        document.querySelector('#view-confirm .btn').innerText = '訂單處理中...';
+        document.querySelector('#view-confirm .btn').disabled = true;
+
+        // 生成訂單編號: ORD + 日期 + 4碼隨機數
+        const dateStr = new Date().toISOString().slice(0,10).replace(/-/g, '');
+        const randomStr = Math.floor(1000 + Math.random() * 9000);
+        const orderId = `ORD-${dateStr}-${randomStr}`;
+
+        // 整理訂單明細文字
+        let itemsDetails = [];
+        menuData.forEach(item => {
+            if (cart[item.id] > 0) itemsDetails.push(`${item.name}*${cart[item.id]}`);
+        });
+
+        const payload = {
+            orderId: orderId,
+            itemsDetails: itemsDetails.join(', ')
+        };
+
+        // 發送 POST 請求至 GAS
+        fetch(GAS_URL, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        })
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('display-order-id').innerText = orderId;
+            switchView('view-success');
+        })
+        .catch(error => {
+            alert('系統發生錯誤，請稍後再試。');
+            document.querySelector('#view-confirm .btn').innerText = '送出訂單';
+            document.querySelector('#view-confirm .btn').disabled = false;
+        });
+    }
+
+    // 店家管理介面：獲取未付款訂單
+    function goToAdmin() {
+        let pwd = prompt("請輸入店家密碼 (測試輸入: admin):");
+        if (pwd === 'admin') {
+            switchView('view-admin');
+            fetchAdminOrders();
+        } else {
+            alert('密碼錯誤！');
+        }
+    }
+
+    function fetchAdminOrders() {
+        fetch(GAS_URL)
+        .then(res => res.json())
+        .then(data => {
+            let adminList = document.getElementById('admin-order-list');
+            if (data.length === 0) {
+                adminList.innerHTML = '<p>目前沒有未付款的訂單。</p>';
+                return;
+            }
+            adminList.innerHTML = '';
+            data.forEach(order => {
+                adminList.innerHTML += `
+                    <div class="admin-order" id="admin-${order.orderId}">
+                        <strong>編號：${order.orderId}</strong><br>
+                        內容：${order.items}<br>
+                        <button class="btn" style="background:#27ae60; padding:5px; margin-top:5px;" 
+                                onclick="markAsPaid('${order.orderId}')">確認已付款</button>
+                    </div>
+                `;
+            });
+        });
+    }
+
+    // 店家管理介面：標記為已付款
+    function markAsPaid(orderId) {
+        if(confirm(`確定要將訂單 ${orderId} 標記為已付款嗎？`)) {
+            fetch(`${GAS_URL}?updateOrderId=${orderId}`)
+            .then(res => res.text())
+            .then(text => {
+                alert('狀態更新成功！');
+                document.getElementById(`admin-${orderId}`).style.display = 'none';
+            });
+        }
+    }
+
+    function switchView(viewId) {
+        document.getElementById('view-menu').classList.add('hidden');
+        document.getElementById('view-confirm').classList.add('hidden');
+        document.getElementById('view-success').classList.add('hidden');
+        document.getElementById('view-admin').classList.add('hidden');
+        document.getElementById(viewId).classList.remove('hidden');
+    }
+
+    // 啟動程式
+    initMenu();
+</script>
+</body>
+</html>
