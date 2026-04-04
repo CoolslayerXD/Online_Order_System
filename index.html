@@ -3,27 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>線上點餐系統</title>
+    <title>顧客線上點餐</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; background-color: #f8f9fa; color: #333; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f8f9fa; padding: 20px; }
         .container { max-width: 500px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        h2 { text-align: center; color: #2c3e50; }
-        .menu-item { display: flex; justify-content: space-between; align-items: center; padding: 15px 0; border-bottom: 1px solid #eee; }
-        .btn { background-color: #3498db; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; width: 100%; font-size: 16px; margin-top: 15px; }
-        .btn:hover { background-color: #2980b9; }
-        .btn-secondary { background-color: #95a5a6; }
+        .menu-item { padding: 15px 0; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; }
+        .stock-warning { color: #e74c3c; font-size: 12px; font-weight: bold; }
         .qty-controls { display: flex; align-items: center; gap: 10px; }
-        .qty-btn { width: 30px; height: 30px; border-radius: 50%; border: 1px solid #ddd; background: #fff; font-size: 18px; cursor: pointer; }
+        .qty-btn { width: 30px; height: 30px; border-radius: 50%; border: 1px solid #ddd; background: #fff; cursor: pointer; }
+        .btn { background: #3498db; color: white; border: none; padding: 10px; width: 100%; border-radius: 5px; cursor: pointer; margin-top: 15px; font-size: 16px; }
+        .btn-secondary { background: #95a5a6; }
         .hidden { display: none; }
-        .order-box { background: #e8f8f5; padding: 15px; border-radius: 5px; text-align: center; margin: 20px 0; border: 2px dashed #1abc9c; }
-        .admin-link { text-align: center; display: block; margin-top: 30px; font-size: 12px; color: #ccc; text-decoration: none; }
-        .admin-order { background: #fff3cd; padding: 10px; margin-bottom: 10px; border-radius: 5px; }
+        .order-box { background: #e8f8f5; padding: 15px; border-radius: 5px; border: 2px dashed #1abc9c; margin-bottom: 15px; }
     </style>
 </head>
 <body>
-
 <div class="container">
-    <div id="view-menu">
+    <div id="view-loading"><h2>讀取菜單中，請稍候...</h2></div>
+
+    <div id="view-menu" class="hidden">
         <h2>歡迎點餐</h2>
         <div id="menu-list"></div>
         <button class="btn" onclick="goToConfirm()">確認餐點，下一步</button>
@@ -31,56 +29,61 @@
 
     <div id="view-confirm" class="hidden">
         <h2>確認您的訂單</h2>
-        <div id="order-summary" style="margin-bottom: 20px; line-height: 1.8;"></div>
+        <div id="order-summary" style="line-height: 1.8;"></div>
         <button class="btn" onclick="submitOrder()">送出訂單</button>
-        <button class="btn btn-secondary" onclick="goBackToMenu()">返回修改</button>
+        <button class="btn btn-secondary" onclick="switchView('view-menu')">返回修改</button>
     </div>
 
     <div id="view-success" class="hidden">
-        <h2>訂單已送出！</h2>
+        <h2>訂單已成立！</h2>
         <div class="order-box">
-            <p>您的訂單編號：</p>
-            <h3 id="display-order-id" style="color: #e74c3c; font-size: 24px; margin: 10px 0;"></h3>
-            <p style="font-size: 18px; margin-bottom: 15px;">總金額：<strong id="display-total-price" style="color: #27ae60;"></strong></p>
-            <p style="color: #c0392b; font-weight: bold;">⚠️ 請務必截圖此畫面作為取餐與付款證明！</p>
+            <p><strong>建立時間：</strong><span id="res-time"></span></p>
+            <p><strong>訂單編號：</strong><span id="res-id" style="color: #e74c3c; font-size: 20px; font-weight:bold;"></span></p>
+            <hr>
+            <div id="res-items" style="text-align: left; margin: 10px 0;"></div>
+            <h3 style="color: #27ae60;">總金額：<span id="res-total"></span></h3>
+            <p style="color: #c0392b; font-size:12px;">⚠️ 請截圖此畫面作為取餐與付款證明</p>
         </div>
-        <p style="text-align: center;">請至櫃檯出示此編號並進行付款，謝謝您的光臨！</p>
+        <button class="btn" onclick="location.reload()">返回主頁 (點下一單)</button>
     </div>
-
-    <div id="view-admin" class="hidden">
-        <h2>店家管理台：未付款訂單</h2>
-        <div id="admin-order-list">載入中...</div>
-        <button class="btn btn-secondary" onclick="location.reload()">返回首頁</button>
-    </div>
-
-    <a href="#" class="admin-link" onclick="goToAdmin()">店家管理登入</a>
 </div>
 
 <script>
-    // 這裡替換成你的 GAS URL
-    const GAS_URL = "https://script.google.com/macros/s/AKfycbxLgIJFuF4Dpw0UKjh-p25jr6nCeKEE7E_XRy9ZfHQK-uNoaUUFjjQOjU812SDn2PcWFw/exec"; 
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbxLgIJFuF4Dpw0UKjh-p25jr6nCeKEE7E_XRy9ZfHQK-uNoaUUFjjQOjU812SDn2PcWFw/exec";
+    let menuData = [];
+    let cart = {};
 
-    const menuData = [
-        { id: 'A', name: '特製餐點 A', price: 120 },
-        { id: 'B', name: '經典餐點 B', price: 150 },
-        { id: 'C', name: '人氣餐點 C', price: 180 }
-    ];
-    let cart = { 'A': 0, 'B': 0, 'C': 0 };
+    // 載入即時菜單與庫存
+    fetch(GAS_URL + "?action=getMenu")
+        .then(res => res.json())
+        .then(data => {
+            menuData = data;
+            data.forEach(item => cart[item.id] = 0);
+            renderMenu();
+            switchView('view-menu');
+        });
 
-    function initMenu() {
-        const menuList = document.getElementById('menu-list');
-        menuList.innerHTML = '';
+    function renderMenu() {
+        const list = document.getElementById('menu-list');
+        list.innerHTML = '';
         menuData.forEach(item => {
-            menuList.innerHTML += `
+            let stockHtml = '';
+            if (item.stock === 0) {
+                stockHtml = `<div class="stock-warning">已售罄</div>`;
+            } else if (item.stock <= 10) {
+                stockHtml = `<div class="stock-warning">最後 ${item.stock} 份</div>`;
+            }
+
+            list.innerHTML += `
                 <div class="menu-item">
                     <div>
-                        <strong>${item.name}</strong><br>
-                        <small>$${item.price}</small>
+                        <strong>${item.name}</strong> ($${item.price})
+                        <div id="stock-msg-${item.id}">${stockHtml}</div>
                     </div>
                     <div class="qty-controls">
-                        <button class="qty-btn" onclick="updateQty('${item.id}', -1)">-</button>
+                        <button class="qty-btn" onclick="updateQty('${item.id}', -1)" ${item.stock === 0 ? 'disabled' : ''}>-</button>
                         <span id="qty-${item.id}">0</span>
-                        <button class="qty-btn" onclick="updateQty('${item.id}', 1)">+</button>
+                        <button class="qty-btn" onclick="updateQty('${item.id}', 1)" ${item.stock === 0 ? 'disabled' : ''}>+</button>
                     </div>
                 </div>
             `;
@@ -88,167 +91,95 @@
     }
 
     function updateQty(id, change) {
-        if (cart[id] + change >= 0) {
-            cart[id] += change;
-            document.getElementById(`qty-${id}`).innerText = cart[id];
+        const item = menuData.find(m => m.id === id);
+        const newQty = cart[id] + change;
+        
+        if (newQty < 0) return;
+        if (newQty > item.stock) {
+            alert(`【${item.name}】已達庫存上限，僅剩 ${item.stock} 份！`);
+            return;
+        }
+
+        cart[id] = newQty;
+        document.getElementById(`qty-${id}`).innerText = cart[id];
+
+        // 動態更新最後X份提示
+        const remain = item.stock - cart[id];
+        const msgDiv = document.getElementById(`stock-msg-${id}`);
+        if (remain === 0) {
+            msgDiv.innerHTML = `<div class="stock-warning">已達購買上限</div>`;
+        } else if (remain <= 10) {
+            msgDiv.innerHTML = `<div class="stock-warning">最後 ${remain} 份</div>`;
+        } else {
+            msgDiv.innerHTML = '';
         }
     }
 
     function goToConfirm() {
-        let totalQty = cart['A'] + cart['B'] + cart['C'];
-        if (totalQty === 0) {
-            alert('請至少選擇一項餐點！');
-            return;
-        }
-
-        let summaryHtml = '';
-        let totalPrice = 0;
+        let total = 0;
+        let html = '';
         menuData.forEach(item => {
             if (cart[item.id] > 0) {
-                let subtotal = cart[item.id] * item.price;
-                summaryHtml += `${item.name} x ${cart[item.id]} = $${subtotal}<br>`;
-                totalPrice += subtotal;
+                let sub = cart[item.id] * item.price;
+                html += `${item.name} x ${cart[item.id]} = $${sub}<br>`;
+                total += sub;
             }
         });
-        summaryHtml += `<hr><strong>總計：$${totalPrice}</strong>`;
-        
-        document.getElementById('order-summary').innerHTML = summaryHtml;
+        if (total === 0) return alert('請先選擇餐點！');
+        html += `<hr><strong>總計：$${total}</strong>`;
+        document.getElementById('order-summary').innerHTML = html;
         switchView('view-confirm');
     }
 
-    function goBackToMenu() {
-        switchView('view-menu');
-    }
-
     function submitOrder() {
-        document.querySelector('#view-confirm .btn').innerText = '訂單處理中...';
+        document.querySelector('#view-confirm .btn').innerText = '處理中...';
         document.querySelector('#view-confirm .btn').disabled = true;
 
-        const dateStr = new Date().toISOString().slice(0,10).replace(/-/g, '');
-        const randomStr = Math.floor(1000 + Math.random() * 9000);
-        const orderId = `ORD-${dateStr}-${randomStr}`;
-
-        let itemsDetails = [];
-        let totalPrice = 0;
+        let finalCart = [];
+        let itemsStr = [];
+        let total = 0;
         menuData.forEach(item => {
             if (cart[item.id] > 0) {
-                itemsDetails.push(`${item.name}*${cart[item.id]}`);
-                totalPrice += cart[item.id] * item.price; // 計算總金額
+                finalCart.push({ id: item.id, name: item.name, qty: cart[item.id] });
+                itemsStr.push(`${item.name}*${cart[item.id]}`);
+                total += cart[item.id] * item.price;
             }
         });
 
-        // 打包要送給 GAS 的資料
-        const payload = {
-            orderId: orderId,
-            itemsDetails: itemsDetails.join(', '),
-            totalPrice: totalPrice // 新增總金額欄位
-        };
-
+        // 移除 no-cors，因為我們需要讀取回傳的 JSON 來判斷是否搶單失敗
         fetch(GAS_URL, {
             method: 'POST',
-            mode: 'no-cors',
-            cache: 'no-cache',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
+            body: JSON.stringify({ cart: finalCart, itemsDetails: itemsStr.join(', '), totalPrice: total })
         })
-        .then(() => {
-            document.getElementById('display-order-id').innerText = orderId;
-            document.getElementById('display-total-price').innerText = `$${totalPrice}`; // 顯示給顧客看
-            switchView('view-success');
-            
-            // 重置購物車狀態 (可選)
-            document.querySelector('#view-confirm .btn').innerText = '送出訂單';
-            document.querySelector('#view-confirm .btn').disabled = false;
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert('發送失敗，請檢查網路連線');
-            document.querySelector('#view-confirm .btn').innerText = '送出訂單';
-            document.querySelector('#view-confirm .btn').disabled = false;
-        });
-    }
-
-    function goToAdmin() {
-        let pwd = prompt("請輸入店家密碼 (測試輸入: admin):");
-        if (pwd === 'admin') {
-            switchView('view-admin');
-            fetchAdminOrders();
-        } else {
-            alert('密碼錯誤！');
-        }
-    }
-
-    function fetchAdminOrders() {
-        const adminList = document.getElementById('admin-order-list');
-        adminList.innerHTML = '載入中...';
-    
-        fetch(GAS_URL)
+        .then(res => res.json())
         .then(res => {
-            if (!res.ok) throw new Error('網路回應不正確');
-            return res.json();
-        })
-        .then(data => {
-            if (!Array.isArray(data)) {
-                adminList.innerHTML = '資料格式錯誤';
-                return;
+            if (res.status === "error") {
+                // 搶單失敗，觸發防呆警告並重整
+                alert(res.message);
+                location.reload(); 
+            } else {
+                // 訂單成功
+                const now = new Date();
+                document.getElementById('res-time').innerText = now.toLocaleString();
+                document.getElementById('res-id').innerText = res.orderId;
+                document.getElementById('res-items').innerHTML = itemsStr.join('<br>');
+                document.getElementById('res-total').innerText = `$${total}`;
+                switchView('view-success');
             }
-            
-            // === 這裡補回了原本被刪掉的渲染邏輯 ===
-            if (data.length === 0) {
-                adminList.innerHTML = '<p>目前沒有未付款的訂單。</p>';
-                return;
-            }
-            
-            adminList.innerHTML = ''; // 清除載入中文字
-            data.forEach(order => {
-                adminList.innerHTML += `
-                    <div class="admin-order" id="admin-${order.orderId}">
-                        <strong>編號：${order.orderId}</strong><br>
-                        內容：${order.items}<br>
-                        <span style="color:#d35400; font-weight:bold;">金額：$${order.totalPrice}</span><br>
-                        <button class="btn" style="background:#27ae60; padding:5px; margin-top:10px;" 
-                                onclick="markAsPaid('${order.orderId}')">確認已付款</button>
-                    </div>
-                `;
-            });
-            // =====================================
         })
         .catch(err => {
-            console.error(err);
-            adminList.innerHTML = '讀取失敗，請確認網路連線。';
+            alert('系統連線異常，請再試一次');
+            document.querySelector('#view-confirm .btn').innerText = '送出訂單';
+            document.querySelector('#view-confirm .btn').disabled = false;
         });
     }
 
-    function markAsPaid(orderId) {
-        if(confirm(`確定要將訂單 ${orderId} 標記為已付款嗎？`)) {
-            // 先讓按鈕變成處理中，避免重複點擊
-            const btn = document.querySelector(`#admin-${orderId} .btn`);
-            btn.innerText = '處理中...';
-            btn.disabled = true;
-
-            fetch(`${GAS_URL}?updateOrderId=${orderId}`)
-            .then(res => res.text())
-            .then(text => {
-                alert('狀態更新成功！');
-                document.getElementById(`admin-${orderId}`).style.display = 'none';
-            })
-            .catch(err => {
-                alert('更新失敗，請再試一次');
-                btn.innerText = '確認已付款';
-                btn.disabled = false;
-            });
-        }
+    function switchView(id) {
+        ['view-loading', 'view-menu', 'view-confirm', 'view-success'].forEach(v => {
+            document.getElementById(v).classList.add('hidden');
+        });
+        document.getElementById(id).classList.remove('hidden');
     }
-
-    function switchView(viewId) {
-        document.getElementById('view-menu').classList.add('hidden');
-        document.getElementById('view-confirm').classList.add('hidden');
-        document.getElementById('view-success').classList.add('hidden');
-        document.getElementById('view-admin').classList.add('hidden');
-        document.getElementById(viewId).classList.remove('hidden');
-    }
-
-    initMenu();
 </script>
 </body>
 </html>
