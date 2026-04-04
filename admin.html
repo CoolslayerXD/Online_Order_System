@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>店家管理控制台</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #ecf0f1; padding: 20px; }
+        h1 { text-align: center; color: #2c3e50; }
+        .board { display: flex; gap: 20px; overflow-x: auto; }
+        .column { flex: 1; min-width: 300px; background: white; border-radius: 8px; padding: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .column h3 { text-align: center; padding-bottom: 10px; border-bottom: 3px solid; }
+        .col-unpaid h3 { border-color: #e74c3c; color: #e74c3c; } /* 紅色 */
+        .col-paid h3 { border-color: #27ae60; color: #27ae60; } /* 綠色 */
+        .col-cancel h3 { border-color: #7f8c8d; color: #7f8c8d; } /* 灰色 */
+        
+        .order-card { background: #f9f9f9; border: 1px solid #ddd; border-left: 5px solid #ccc; padding: 15px; margin-bottom: 15px; border-radius: 5px; }
+        .order-card.unpaid { border-left-color: #e74c3c; }
+        .order-card.paid { border-left-color: #27ae60; }
+        .order-card.cancel { border-left-color: #7f8c8d; opacity: 0.7; }
+        
+        .actions { display: flex; gap: 10px; margin-top: 10px; }
+        .btn { flex: 1; padding: 8px; border: none; border-radius: 4px; cursor: pointer; color: white; font-weight: bold; }
+        .btn-pay { background: #27ae60; }
+        .btn-cancel { background: #e74c3c; }
+        .btn:hover { filter: brightness(1.1); }
+        .btn:disabled { background: #bdc3c7; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+
+<h1>👨‍🍳 訂單管理看板</h1>
+<div style="text-align: right; margin-bottom: 10px;">
+    <button onclick="loadOrders()" style="padding: 10px; cursor: pointer;">🔄 重新整理訂單</button>
+</div>
+
+<div class="board">
+    <div class="column col-unpaid">
+        <h3>未付款</h3>
+        <div id="list-unpaid">載入中...</div>
+    </div>
+    <div class="column col-paid">
+        <h3>已付款</h3>
+        <div id="list-paid"></div>
+    </div>
+    <div class="column col-cancel">
+        <h3>不成立</h3>
+        <div id="list-cancel"></div>
+    </div>
+</div>
+
+<script>
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbxLgIJFuF4Dpw0UKjh-p25jr6nCeKEE7E_XRy9ZfHQK-uNoaUUFjjQOjU812SDn2PcWFw/exec"; 
+
+    function loadOrders() {
+        document.getElementById('list-unpaid').innerHTML = '載入中...';
+        document.getElementById('list-paid').innerHTML = '';
+        document.getElementById('list-cancel').innerHTML = '';
+
+        fetch(GAS_URL + "?action=getOrders")
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('list-unpaid').innerHTML = '';
+                
+                data.forEach(order => {
+                    // 根據狀態設定樣式與按鈕
+                    let cssClass = '', buttons = '';
+                    if (order.status === '未付款') {
+                        cssClass = 'unpaid';
+                        buttons = `
+                            <button class="btn btn-pay" onclick="updateStatus('${order.orderId}', '已付款', this)">✔ 已付款</button>
+                            <button class="btn btn-cancel" onclick="updateStatus('${order.orderId}', '不成立', this)">✖ 退單(還庫存)</button>
+                        `;
+                    } else if (order.status === '已付款') {
+                        cssClass = 'paid';
+                        buttons = `<span>✅ 交易完成</span>`;
+                    } else {
+                        cssClass = 'cancel';
+                        buttons = `<span>⛔ 庫存已退還</span>`;
+                    }
+
+                    // 格式化時間
+                    const timeStr = new Date(order.time).toLocaleString();
+
+                    const cardHtml = `
+                        <div class="order-card ${cssClass}">
+                            <div style="font-size:12px; color:#666;">${timeStr}</div>
+                            <strong style="font-size: 18px;">${order.orderId}</strong>
+                            <div style="margin: 8px 0; font-weight: bold; color:#2980b9;">${order.items}</div>
+                            <div style="color: #d35400; font-weight: bold;">總額：$${order.totalPrice}</div>
+                            <div class="actions">${buttons}</div>
+                        </div>
+                    `;
+
+                    // 分類塞入對應的欄位
+                    if (order.status === '未付款') document.getElementById('list-unpaid').innerHTML += cardHtml;
+                    if (order.status === '已付款') document.getElementById('list-paid').innerHTML += cardHtml;
+                    if (order.status === '不成立') document.getElementById('list-cancel').innerHTML += cardHtml;
+                });
+            });
+    }
+
+    function updateStatus(orderId, newStatus, btnElement) {
+        let msg = newStatus === '不成立' ? `確定要將 [${orderId}] 標記為不成立？\n(系統將自動退還對應庫存)` : `確認 [${orderId}] 已收款？`;
+        if (confirm(msg)) {
+            // 停用按鈕防連點
+            btnElement.innerText = "處理中...";
+            btnElement.disabled = true;
+
+            fetch(`${GAS_URL}?action=updateStatus&orderId=${orderId}&status=${newStatus}`)
+                .then(res => res.text())
+                .then(text => {
+                    loadOrders(); // 成功後重新整理看板
+                });
+        }
+    }
+
+    // 初始化載入
+    loadOrders();
+</script>
+</body>
+</html>
