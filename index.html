@@ -25,8 +25,7 @@
 <div class="container">
     <div id="view-menu">
         <h2>歡迎點餐</h2>
-        <div id="menu-list">
-            </div>
+        <div id="menu-list"></div>
         <button class="btn" onclick="goToConfirm()">確認餐點，下一步</button>
     </div>
 
@@ -41,7 +40,8 @@
         <h2>訂單已送出！</h2>
         <div class="order-box">
             <p>您的訂單編號：</p>
-            <h3 id="display-order-id" style="color: #e74c3c; font-size: 24px;"></h3>
+            <h3 id="display-order-id" style="color: #e74c3c; font-size: 24px; margin: 10px 0;"></h3>
+            <p style="font-size: 18px; margin-bottom: 15px;">總金額：<strong id="display-total-price" style="color: #27ae60;"></strong></p>
             <p style="color: #c0392b; font-weight: bold;">⚠️ 請務必截圖此畫面作為取餐與付款證明！</p>
         </div>
         <p style="text-align: center;">請至櫃檯出示此編號並進行付款，謝謝您的光臨！</p>
@@ -57,7 +57,7 @@
 </div>
 
 <script>
-    // 填入你的 GAS 網頁應用程式 URL
+    // 這裡替換成你的 GAS URL
     const GAS_URL = "https://script.google.com/macros/s/AKfycbxLgIJFuF4Dpw0UKjh-p25jr6nCeKEE7E_XRy9ZfHQK-uNoaUUFjjQOjU812SDn2PcWFw/exec"; 
 
     const menuData = [
@@ -67,7 +67,6 @@
     ];
     let cart = { 'A': 0, 'B': 0, 'C': 0 };
 
-    // 初始化菜單
     function initMenu() {
         const menuList = document.getElementById('menu-list');
         menuList.innerHTML = '';
@@ -95,7 +94,6 @@
         }
     }
 
-    // 切換至確認頁面
     function goToConfirm() {
         let totalQty = cart['A'] + cart['B'] + cart['C'];
         if (totalQty === 0) {
@@ -122,47 +120,54 @@
         switchView('view-menu');
     }
 
-    // 送出訂單給 GAS
     function submitOrder() {
         document.querySelector('#view-confirm .btn').innerText = '訂單處理中...';
         document.querySelector('#view-confirm .btn').disabled = true;
 
-        // 生成訂單編號: ORD + 日期 + 4碼隨機數
         const dateStr = new Date().toISOString().slice(0,10).replace(/-/g, '');
         const randomStr = Math.floor(1000 + Math.random() * 9000);
         const orderId = `ORD-${dateStr}-${randomStr}`;
 
-        // 整理訂單明細文字
         let itemsDetails = [];
+        let totalPrice = 0;
         menuData.forEach(item => {
-            if (cart[item.id] > 0) itemsDetails.push(`${item.name}*${cart[item.id]}`);
+            if (cart[item.id] > 0) {
+                itemsDetails.push(`${item.name}*${cart[item.id]}`);
+                totalPrice += cart[item.id] * item.price; // 計算總金額
+            }
         });
 
+        // 打包要送給 GAS 的資料
         const payload = {
             orderId: orderId,
-            itemsDetails: itemsDetails.join(', ')
+            itemsDetails: itemsDetails.join(', '),
+            totalPrice: totalPrice // 新增總金額欄位
         };
 
-        // 發送 POST 請求至 GAS
-    fetch(GAS_URL, {
-        method: 'POST',
-        mode: 'no-cors', // 解決部分跨網域問題
-        cache: 'no-cache',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    })
-    .then(() => {
-        // 因為使用了 no-cors，我們無法讀取回傳值，但只要沒噴錯就視為成功
-        document.getElementById('display-order-id').innerText = orderId;
-        switchView('view-success');
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('發送失敗，請檢查網路連線');
-    });
+        fetch(GAS_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            cache: 'no-cache',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+        .then(() => {
+            document.getElementById('display-order-id').innerText = orderId;
+            document.getElementById('display-total-price').innerText = `$${totalPrice}`; // 顯示給顧客看
+            switchView('view-success');
+            
+            // 重置購物車狀態 (可選)
+            document.querySelector('#view-confirm .btn').innerText = '送出訂單';
+            document.querySelector('#view-confirm .btn').disabled = false;
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('發送失敗，請檢查網路連線');
+            document.querySelector('#view-confirm .btn').innerText = '送出訂單';
+            document.querySelector('#view-confirm .btn').disabled = false;
+        });
     }
 
-    // 店家管理介面：獲取未付款訂單
     function goToAdmin() {
         let pwd = prompt("請輸入店家密碼 (測試輸入: admin):");
         if (pwd === 'admin') {
@@ -187,22 +192,50 @@
                 adminList.innerHTML = '資料格式錯誤';
                 return;
             }
-            // ... 原有的渲染邏輯 ...
+            
+            // === 這裡補回了原本被刪掉的渲染邏輯 ===
+            if (data.length === 0) {
+                adminList.innerHTML = '<p>目前沒有未付款的訂單。</p>';
+                return;
+            }
+            
+            adminList.innerHTML = ''; // 清除載入中文字
+            data.forEach(order => {
+                adminList.innerHTML += `
+                    <div class="admin-order" id="admin-${order.orderId}">
+                        <strong>編號：${order.orderId}</strong><br>
+                        內容：${order.items}<br>
+                        <span style="color:#d35400; font-weight:bold;">金額：$${order.totalPrice}</span><br>
+                        <button class="btn" style="background:#27ae60; padding:5px; margin-top:10px;" 
+                                onclick="markAsPaid('${order.orderId}')">確認已付款</button>
+                    </div>
+                `;
+            });
+            // =====================================
         })
         .catch(err => {
             console.error(err);
-            adminList.innerHTML = '讀取失敗，請確認 GAS 是否已發佈為「所有人」存取。';
+            adminList.innerHTML = '讀取失敗，請確認網路連線。';
         });
     }
 
-    // 店家管理介面：標記為已付款
     function markAsPaid(orderId) {
         if(confirm(`確定要將訂單 ${orderId} 標記為已付款嗎？`)) {
+            // 先讓按鈕變成處理中，避免重複點擊
+            const btn = document.querySelector(`#admin-${orderId} .btn`);
+            btn.innerText = '處理中...';
+            btn.disabled = true;
+
             fetch(`${GAS_URL}?updateOrderId=${orderId}`)
             .then(res => res.text())
             .then(text => {
                 alert('狀態更新成功！');
                 document.getElementById(`admin-${orderId}`).style.display = 'none';
+            })
+            .catch(err => {
+                alert('更新失敗，請再試一次');
+                btn.innerText = '確認已付款';
+                btn.disabled = false;
             });
         }
     }
@@ -215,7 +248,6 @@
         document.getElementById(viewId).classList.remove('hidden');
     }
 
-    // 啟動程式
     initMenu();
 </script>
 </body>
