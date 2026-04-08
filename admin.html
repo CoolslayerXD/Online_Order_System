@@ -7,172 +7,86 @@
     <style>
         body { font-family: 'Segoe UI', sans-serif; background: #ecf0f1; padding: 20px; }
         .header-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        h1 { color: #2c3e50; margin: 0; }
-        
-        /* 音效與控制區塊樣式 */
-        .control-panel { display: flex; gap: 10px; align-items: center; }
-        .sound-btn { padding: 10px 20px; font-size: 16px; border-radius: 8px; border: none; cursor: pointer; font-weight: bold; transition: 0.3s; }
-        .sound-off { background-color: #e74c3c; color: white; }
-        .sound-on { background-color: #27ae60; color: white; box-shadow: 0 0 10px #27ae60; }
-        .refresh-status { font-size: 14px; color: #7f8c8d; }
-
-        .board { display: flex; gap: 20px; overflow-x: auto; }
-        .column { flex: 1; min-width: 300px; background: white; border-radius: 8px; padding: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-        .column h3 { text-align: center; padding-bottom: 10px; border-bottom: 3px solid; }
-        .col-unpaid h3 { border-color: #e74c3c; color: #e74c3c; } 
-        .col-paid h3 { border-color: #27ae60; color: #27ae60; } 
-        .col-cancel h3 { border-color: #7f8c8d; color: #7f8c8d; } 
-        
-        .order-card { background: #f9f9f9; border: 1px solid #ddd; border-left: 5px solid #ccc; padding: 15px; margin-bottom: 15px; border-radius: 5px; animation: fadeIn 0.5s; }
-        .order-card.unpaid { border-left-color: #e74c3c; }
-        .order-card.paid { border-left-color: #27ae60; }
-        .order-card.cancel { border-left-color: #7f8c8d; opacity: 0.7; }
-        
-        .actions { display: flex; gap: 10px; margin-top: 10px; }
-        .btn { flex: 1; padding: 8px; border: none; border-radius: 4px; cursor: pointer; color: white; font-weight: bold; }
-        .btn-pay { background: #27ae60; }
-        .btn-cancel { background: #e74c3c; }
-        .btn:hover { filter: brightness(1.1); }
-        .btn:disabled { background: #bdc3c7; cursor: not-allowed; }
-
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+        .sound-btn { padding: 10px 20px; cursor: pointer; border-radius: 8px; border: none; font-weight: bold; }
+        .sound-off { background: #e74c3c; color: white; }
+        .sound-on { background: #27ae60; color: white; box-shadow: 0 0 10px #27ae60; }
+        .board { display: flex; gap: 20px; }
+        .column { flex: 1; background: white; border-radius: 8px; padding: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); min-height: 400px; }
+        .order-card { background: #f9f9f9; border: 1px solid #ddd; padding: 15px; margin-bottom: 15px; border-radius: 5px; }
+        .unpaid { border-left: 5px solid #e74c3c; }
     </style>
 </head>
 <body>
 
 <div class="header-container">
     <h1>👨‍🍳 訂單管理看板</h1>
-    <div class="control-panel">
-        <span class="refresh-status" id="last-update">系統已就緒</span>
-        <button id="soundToggle" class="sound-btn sound-off" onclick="toggleSound()">
-            🔇 點擊啟用接單音效
-        </button>
+    <div>
+        <span id="last-update" style="font-size: 12px; color: #7f8c8d;">載入中...</span>
+        <button id="soundToggle" class="sound-btn sound-off" onclick="enableSound()">🔇 點擊允許播放音效</button>
     </div>
 </div>
 
 <div class="board">
-    <div class="column col-unpaid">
-        <h3>未付款</h3>
-        <div id="list-unpaid">載入中...</div>
-    </div>
-    <div class="column col-paid">
-        <h3>已付款</h3>
-        <div id="list-paid"></div>
-    </div>
-    <div class="column col-cancel">
-        <h3>不成立</h3>
-        <div id="list-cancel"></div>
+    <div class="column">
+        <h3>未付款訂單</h3>
+        <div id="list-unpaid">讀取中...</div>
     </div>
 </div>
 
 <audio id="notificationSound" src="dingdong.mp3" preload="auto"></audio>
 
 <script>
-    const GAS_URL = "https://script.google.com/macros/s/AKfycbxLgIJFuF4Dpw0UKjh-p25jr6nCeKEE7E_XRy9ZfHQK-uNoaUUFjjQOjU812SDn2PcWFw/exec"; // ❗請務必替換❗
-    let lastOrderCount = 0; // 用來記錄上一次抓到的訂單數量
-    let soundEnabled = false;
+    // ❗請換成你最新的 GAS 網址❗
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbxLgIJFuF4Dpw0UKjh-p25jr6nCeKEE7E_XRy9ZfHQK-uNoaUUFjjQOjU812SDn2PcWFw/exec";
+    let lastOrderCount = 0;
+    let isSoundAllowed = false;
 
-    // 音效開關控制
-    function toggleSound() {
-        const btn = document.getElementById('soundToggle');
+    function enableSound() {
         const audio = document.getElementById('notificationSound');
+        audio.play().then(() => {
+            audio.pause();
+            audio.currentTime = 0;
+            isSoundAllowed = true;
+            document.getElementById('soundToggle').className = "sound-btn sound-on";
+            document.getElementById('soundToggle').innerText = "🔊 音效已就緒";
+        }).catch(e => alert("請先在瀏覽器設定中允許此網站播放聲音"));
+    }
+
+    function fetchOrders() {
+        document.getElementById('last-update').innerText = "🔄 更新中...";
         
-        if (!soundEnabled) {
-            // 嘗試播放一段無聲或立刻暫停，以解除瀏覽器的音效封印
-            audio.play().then(() => {
-                audio.pause();
-                audio.currentTime = 0;
-                soundEnabled = true;
-                btn.className = "sound-btn sound-on";
-                btn.innerHTML = "🔊 接單音效已開啟";
-            }).catch(err => {
-                alert("瀏覽器阻擋音效，請允許網站播放聲音。");
-            });
-        } else {
-            soundEnabled = false;
-            btn.className = "sound-btn sound-off";
-            btn.innerHTML = "🔇 點擊啟用接單音效";
-        }
+        fetch(GAS_URL)
+        .then(res => res.json())
+        .then(data => {
+            if (lastOrderCount !== 0 && data.length > lastOrderCount && isSoundAllowed) {
+                document.getElementById('notificationSound').play();
+            }
+            lastOrderCount = data.length;
+            renderOrders(data);
+            document.getElementById('last-update').innerText = "最後更新：" + new Date().toLocaleTimeString();
+        })
+        .catch(err => {
+            document.getElementById('list-unpaid').innerHTML = `<p style="color:red;">讀取失敗：請檢查 GAS 權限或網址是否正確</p>`;
+        });
     }
 
-    function loadOrders() {
-        document.getElementById('last-update').innerText = "🔄 同步中...";
-
-        fetch(GAS_URL + "?action=getOrders")
-            .then(res => res.json())
-            .then(data => {
-                // 判斷是否有新訂單 (如果目前抓到的訂單數大於上次紀錄，且不是第一次載入)
-                if (lastOrderCount !== 0 && data.length > lastOrderCount) {
-                    if (soundEnabled) {
-                        document.getElementById('notificationSound').play();
-                    }
-                }
-                lastOrderCount = data.length; // 更新記憶的訂單數量
-
-                document.getElementById('list-unpaid').innerHTML = '';
-                document.getElementById('list-paid').innerHTML = '';
-                document.getElementById('list-cancel').innerHTML = '';
-                
-                data.forEach(order => {
-                    let cssClass = '', buttons = '';
-                    if (order.status === '未付款') {
-                        cssClass = 'unpaid';
-                        buttons = `
-                            <button class="btn btn-pay" onclick="updateStatus('${order.orderId}', '已付款', this)">✔ 已付款</button>
-                            <button class="btn btn-cancel" onclick="updateStatus('${order.orderId}', '不成立', this)">✖ 退單(還庫存)</button>
-                        `;
-                    } else if (order.status === '已付款') {
-                        cssClass = 'paid';
-                        buttons = `<span>✅ 交易完成</span>`;
-                    } else {
-                        cssClass = 'cancel';
-                        buttons = `<span>⛔ 庫存已退還</span>`;
-                    }
-
-                    const timeStr = new Date(order.time).toLocaleString();
-                    const cardHtml = `
-                        <div class="order-card ${cssClass}">
-                            <div style="font-size:12px; color:#666;">${timeStr}</div>
-                            <strong style="font-size: 18px;">${order.orderId}</strong>
-                            <div style="margin: 8px 0; font-weight: bold; color:#2980b9;">${order.items}</div>
-                            <div style="color: #d35400; font-weight: bold;">總額：$${order.totalPrice}</div>
-                            <div class="actions">${buttons}</div>
-                        </div>
-                    `;
-
-                    if (order.status === '未付款') document.getElementById('list-unpaid').innerHTML += cardHtml;
-                    if (order.status === '已付款') document.getElementById('list-paid').innerHTML += cardHtml;
-                    if (order.status === '不成立') document.getElementById('list-cancel').innerHTML += cardHtml;
-                });
-
-                const now = new Date();
-                document.getElementById('last-update').innerText = `最後更新: ${now.getHours()}:${("0"+now.getMinutes()).slice(-2)}:${("0"+now.getSeconds()).slice(-2)}`;
-            })
-            .catch(err => {
-                document.getElementById('last-update').innerText = "⚠️ 連線異常，重試中";
-            });
+    function renderOrders(data) {
+        const container = document.getElementById('list-unpaid');
+        container.innerHTML = '';
+        data.filter(o => o.status === '未付款').forEach(order => {
+            container.innerHTML += `
+                <div class="order-card unpaid">
+                    <strong>單號：${order.orderId}</strong>
+                    <div>內容：${order.itemsDetails}</div>
+                </div>
+            `;
+        });
+        if(container.innerHTML === '') container.innerHTML = '目前無未付款訂單';
     }
 
-    function updateStatus(orderId, newStatus, btnElement) {
-        let msg = newStatus === '不成立' ? `確定要將 [${orderId}] 標記為不成立？\n(系統將自動退還對應庫存)` : `確認 [${orderId}] 已收款？`;
-        if (confirm(msg)) {
-            btnElement.innerText = "處理中...";
-            btnElement.disabled = true;
-
-            fetch(`${GAS_URL}?action=updateStatus&orderId=${orderId}&status=${newStatus}`)
-                .then(res => res.text())
-                .then(text => {
-                    loadOrders(); 
-                });
-        }
-    }
-
-    // 1. 網頁開啟時先載入一次訂單
-    loadOrders();
-
-    // 2. 設定每 15 秒 (15000 毫秒) 自動在背景執行 loadOrders() 抓取新資料
-    setInterval(loadOrders, 15000); 
-
+    // 每 15 秒檢查一次
+    setInterval(fetchOrders, 15000);
+    fetchOrders();
 </script>
 </body>
 </html>
