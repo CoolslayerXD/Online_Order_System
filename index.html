@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>顧客線上點餐</title>
+    <title>線上點餐系統</title>
     <style>
         body { font-family: 'Segoe UI', sans-serif; background: #f8f9fa; padding: 20px; }
         .container { max-width: 500px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
@@ -13,6 +13,7 @@
         .qty-btn { width: 30px; height: 30px; border-radius: 50%; border: 1px solid #ddd; background: #fff; cursor: pointer; }
         .btn { background: #3498db; color: white; border: none; padding: 10px; width: 100%; border-radius: 5px; cursor: pointer; margin-top: 15px; font-size: 16px; }
         .btn-secondary { background: #95a5a6; }
+        .btn:disabled { background: #bdc3c7; cursor: not-allowed; }
         .hidden { display: none; }
         .order-box { background: #e8f8f5; padding: 15px; border-radius: 5px; border: 2px dashed #1abc9c; margin-bottom: 15px; }
     </style>
@@ -22,7 +23,7 @@
     <div id="view-loading"><h2>讀取菜單中，請稍候...</h2></div>
 
     <div id="view-menu" class="hidden">
-        <h2>歡迎點餐（目前只接受現金付款哦~）</h2>
+        <h2>歡迎點餐</h2>
         <div id="menu-list"></div>
         <button class="btn" onclick="goToConfirm()">確認餐點，下一步</button>
     </div>
@@ -30,7 +31,7 @@
     <div id="view-confirm" class="hidden">
         <h2>確認您的訂單</h2>
         <div id="order-summary" style="line-height: 1.8;"></div>
-        <button class="btn" onclick="submitOrder()">送出訂單</button>
+        <button id="btn-submit" class="btn" onclick="submitOrder()">送出訂單</button>
         <button class="btn btn-secondary" onclick="switchView('view-menu')">返回修改</button>
     </div>
 
@@ -53,7 +54,16 @@
     let menuData = [];
     let cart = {};
 
-    // 載入即時菜單與庫存
+    // ==========================================
+    // 🛡️ 產生客戶端專屬 ID (記錄在瀏覽器中)
+    // ==========================================
+    let localClientId = localStorage.getItem('little_onion_client_id');
+    if (!localClientId) {
+        // 生成一組隨機亂碼作為身分識別
+        localClientId = 'client_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+        localStorage.setItem('little_onion_client_id', localClientId);
+    }
+
     fetch(GAS_URL + "?action=getMenu")
         .then(res => res.json())
         .then(data => {
@@ -68,11 +78,8 @@
         list.innerHTML = '';
         menuData.forEach(item => {
             let stockHtml = '';
-            if (item.stock === 0) {
-                stockHtml = `<div class="stock-warning">已售罄</div>`;
-            } else if (item.stock <= 10) {
-                stockHtml = `<div class="stock-warning">最後 ${item.stock} 份</div>`;
-            }
+            if (item.stock === 0) stockHtml = `<div class="stock-warning">已售罄</div>`;
+            else if (item.stock <= 10) stockHtml = `<div class="stock-warning">最後 ${item.stock} 份</div>`;
 
             list.innerHTML += `
                 <div class="menu-item">
@@ -95,29 +102,20 @@
         const newQty = cart[id] + change;
         
         if (newQty < 0) return;
-        if (newQty > item.stock) {
-            alert(`【${item.name}】已達庫存上限，僅剩 ${item.stock} 份！`);
-            return;
-        }
+        if (newQty > item.stock) return alert(`【${item.name}】已達庫存上限！`);
 
         cart[id] = newQty;
         document.getElementById(`qty-${id}`).innerText = cart[id];
 
-        // 動態更新最後X份提示
         const remain = item.stock - cart[id];
         const msgDiv = document.getElementById(`stock-msg-${id}`);
-        if (remain === 0) {
-            msgDiv.innerHTML = `<div class="stock-warning">已達購買上限</div>`;
-        } else if (remain <= 10) {
-            msgDiv.innerHTML = `<div class="stock-warning">最後 ${remain} 份</div>`;
-        } else {
-            msgDiv.innerHTML = '';
-        }
+        if (remain === 0) msgDiv.innerHTML = `<div class="stock-warning">已達購買上限</div>`;
+        else if (remain <= 10) msgDiv.innerHTML = `<div class="stock-warning">最後 ${remain} 份</div>`;
+        else msgDiv.innerHTML = '';
     }
 
     function goToConfirm() {
-        let total = 0;
-        let html = '';
+        let total = 0, html = '';
         menuData.forEach(item => {
             if (cart[item.id] > 0) {
                 let sub = cart[item.id] * item.price;
@@ -132,12 +130,11 @@
     }
 
     function submitOrder() {
-        document.querySelector('#view-confirm .btn').innerText = '處理中...';
-        document.querySelector('#view-confirm .btn').disabled = true;
+        const btn = document.getElementById('btn-submit');
+        btn.innerText = '處理中...';
+        btn.disabled = true; // 鎖定按鈕防連點
 
-        let finalCart = [];
-        let itemsStr = [];
-        let total = 0;
+        let finalCart = [], itemsStr = [], total = 0;
         menuData.forEach(item => {
             if (cart[item.id] > 0) {
                 finalCart.push({ id: item.id, name: item.name, qty: cart[item.id] });
@@ -146,19 +143,28 @@
             }
         });
 
-        // 移除 no-cors，因為我們需要讀取回傳的 JSON 來判斷是否搶單失敗
+        // 將 clientId 放入打包的資料中一起傳給後端
+        const payload = {
+            cart: finalCart,
+            itemsDetails: itemsStr.join(', '),
+            totalPrice: total,
+            clientId: localClientId
+        };
+
         fetch(GAS_URL, {
             method: 'POST',
-            body: JSON.stringify({ cart: finalCart, itemsDetails: itemsStr.join(', '), totalPrice: total })
+            body: JSON.stringify(payload)
         })
         .then(res => res.json())
         .then(res => {
             if (res.status === "error") {
-                // 搶單失敗，觸發防呆警告並重整
                 alert(res.message);
-                location.reload(); 
+                // 如果是流量管制錯誤，啟動冷卻時間 5 秒後才解鎖按鈕
+                setTimeout(() => {
+                    btn.innerText = '送出訂單';
+                    btn.disabled = false;
+                }, 5000);
             } else {
-                // 訂單成功
                 const now = new Date();
                 document.getElementById('res-time').innerText = now.toLocaleString();
                 document.getElementById('res-id').innerText = res.orderId;
@@ -169,8 +175,8 @@
         })
         .catch(err => {
             alert('系統連線異常，請再試一次');
-            document.querySelector('#view-confirm .btn').innerText = '送出訂單';
-            document.querySelector('#view-confirm .btn').disabled = false;
+            btn.innerText = '送出訂單';
+            btn.disabled = false;
         });
     }
 
