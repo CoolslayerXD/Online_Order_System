@@ -8,8 +8,6 @@
         body { font-family: 'Segoe UI', sans-serif; background: #ecf0f1; padding: 20px; }
         .header-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
         h1 { color: #2c3e50; margin: 0; }
-        
-        /* 音效與控制區塊樣式 */
         .control-panel { display: flex; gap: 10px; align-items: center; }
         .sound-btn { padding: 10px 20px; font-size: 16px; border-radius: 8px; border: none; cursor: pointer; font-weight: bold; transition: 0.3s; }
         .sound-off { background-color: #e74c3c; color: white; }
@@ -68,12 +66,11 @@
 <audio id="notificationSound" src="dingdong.mp3" preload="auto"></audio>
 
 <script>
-    const GAS_URL = "https://script.google.com/macros/s/AKfycbxLgIJFuF4Dpw0UKjh-p25jr6nCeKEE7E_XRy9ZfHQK-uNoaUUFjjQOjU812SDn2PcWFw/exec"; 
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbxLgIJFuF4Dpw0UKjh-p25jr6nCeKEE7E_XRy9ZfHQK-uNoaUUFjjQOjU812SDn2PcWFw/exec";
     let lastOrderCount = 0; 
     let soundEnabled = false;
-    let adminToken = ""; // 存放管理員輸入的密碼
+    let adminToken = "";
 
-    // 音效開關控制
     function toggleSound() {
         const btn = document.getElementById('soundToggle');
         const audio = document.getElementById('notificationSound');
@@ -96,27 +93,23 @@
     }
 
     function loadOrders() {
-        if (!adminToken) return; // 如果沒有密碼，終止執行
+        if (!adminToken) return; 
 
         document.getElementById('last-update').innerText = "🔄 同步中...";
 
-        // 請求網址加上 token 參數
         fetch(`${GAS_URL}?action=getOrders&token=${encodeURIComponent(adminToken)}`)
             .then(res => res.json())
             .then(data => {
-                // 檢查後端是否回傳權限錯誤
                 if (data.status === "error") {
                     alert(data.message);
                     document.getElementById('last-update').innerText = "⚠️ 驗證失敗";
                     document.getElementById('list-unpaid').innerHTML = '<span style="color:red;">密碼錯誤，請重新整理頁面。</span>';
-                    adminToken = ""; // 清除錯誤密碼
+                    adminToken = ""; 
                     return;
                 }
 
-                if (lastOrderCount !== 0 && data.length > lastOrderCount) {
-                    if (soundEnabled) {
-                        document.getElementById('notificationSound').play();
-                    }
+                if (lastOrderCount !== 0 && data.length > lastOrderCount && soundEnabled) {
+                    document.getElementById('notificationSound').play();
                 }
                 lastOrderCount = data.length; 
 
@@ -170,7 +163,6 @@
             btnElement.innerText = "處理中...";
             btnElement.disabled = true;
 
-            // 更新狀態也必須帶上 token
             fetch(`${GAS_URL}?action=updateStatus&orderId=${orderId}&status=${newStatus}&token=${encodeURIComponent(adminToken)}`)
                 .then(res => res.text())
                 .then(text => {
@@ -183,25 +175,18 @@
         }
     }
 
-    // 啟動管理員介面的初始化流程
     function initAdmin() {
-        // 跳出對話框要求輸入密碼
         adminToken = prompt("🔒 進入店家管理控制台\n請輸入管理員 Token：");
-        
         if (!adminToken) {
             alert("必須輸入密碼才能檢視與管理訂單！");
             document.getElementById('list-unpaid').innerHTML = '<span style="color:red;">未授權，請重新整理頁面。</span>';
             return;
         }
-
-        // 有輸入密碼才開始抓資料與設定定時更新
         loadOrders();
         setInterval(loadOrders, 15000); 
     }
 
-    // 執行初始化
     initAdmin();
-
 </script>
 </body>
 </html>
