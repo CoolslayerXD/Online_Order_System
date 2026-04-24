@@ -43,7 +43,7 @@
 <div class="header-container">
     <h1>👨‍🍳 訂單管理看板</h1>
     <div class="control-panel">
-        <span class="refresh-status" id="last-update">系統已就緒</span>
+        <span class="refresh-status" id="last-update">等待授權...</span>
         <button id="soundToggle" class="sound-btn sound-off" onclick="toggleSound()">
             🔇 點擊啟用接單音效
         </button>
@@ -53,7 +53,7 @@
 <div class="board">
     <div class="column col-unpaid">
         <h3>未付款</h3>
-        <div id="list-unpaid">載入中...</div>
+        <div id="list-unpaid">請先輸入管理員密碼...</div>
     </div>
     <div class="column col-paid">
         <h3>已付款</h3>
@@ -68,9 +68,10 @@
 <audio id="notificationSound" src="dingdong.mp3" preload="auto"></audio>
 
 <script>
-    const GAS_URL = "https://script.google.com/macros/s/AKfycbxLgIJFuF4Dpw0UKjh-p25jr6nCeKEE7E_XRy9ZfHQK-uNoaUUFjjQOjU812SDn2PcWFw/exec"; // ❗請務必替換❗
-    let lastOrderCount = 0; // 用來記錄上一次抓到的訂單數量
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbxLgIJFuF4Dpw0UKjh-p25jr6nCeKEE7E_XRy9ZfHQK-uNoaUUFjjQOjU812SDn2PcWFw/exec"; 
+    let lastOrderCount = 0; 
     let soundEnabled = false;
+    let adminToken = ""; // 存放管理員輸入的密碼
 
     // 音效開關控制
     function toggleSound() {
@@ -78,7 +79,6 @@
         const audio = document.getElementById('notificationSound');
         
         if (!soundEnabled) {
-            // 嘗試播放一段無聲或立刻暫停，以解除瀏覽器的音效封印
             audio.play().then(() => {
                 audio.pause();
                 audio.currentTime = 0;
@@ -96,18 +96,29 @@
     }
 
     function loadOrders() {
+        if (!adminToken) return; // 如果沒有密碼，終止執行
+
         document.getElementById('last-update').innerText = "🔄 同步中...";
 
-        fetch(GAS_URL + "?action=getOrders")
+        // 請求網址加上 token 參數
+        fetch(`${GAS_URL}?action=getOrders&token=${encodeURIComponent(adminToken)}`)
             .then(res => res.json())
             .then(data => {
-                // 判斷是否有新訂單 (如果目前抓到的訂單數大於上次紀錄，且不是第一次載入)
+                // 檢查後端是否回傳權限錯誤
+                if (data.status === "error") {
+                    alert(data.message);
+                    document.getElementById('last-update').innerText = "⚠️ 驗證失敗";
+                    document.getElementById('list-unpaid').innerHTML = '<span style="color:red;">密碼錯誤，請重新整理頁面。</span>';
+                    adminToken = ""; // 清除錯誤密碼
+                    return;
+                }
+
                 if (lastOrderCount !== 0 && data.length > lastOrderCount) {
                     if (soundEnabled) {
                         document.getElementById('notificationSound').play();
                     }
                 }
-                lastOrderCount = data.length; // 更新記憶的訂單數量
+                lastOrderCount = data.length; 
 
                 document.getElementById('list-unpaid').innerHTML = '';
                 document.getElementById('list-paid').innerHTML = '';
@@ -159,19 +170,37 @@
             btnElement.innerText = "處理中...";
             btnElement.disabled = true;
 
-            fetch(`${GAS_URL}?action=updateStatus&orderId=${orderId}&status=${newStatus}`)
+            // 更新狀態也必須帶上 token
+            fetch(`${GAS_URL}?action=updateStatus&orderId=${orderId}&status=${newStatus}&token=${encodeURIComponent(adminToken)}`)
                 .then(res => res.text())
                 .then(text => {
-                    loadOrders(); 
+                    if(text.includes("error") || text.includes("驗證失敗")) {
+                        alert("驗證失敗，權限不足！");
+                    } else {
+                        loadOrders(); 
+                    }
                 });
         }
     }
 
-    // 1. 網頁開啟時先載入一次訂單
-    loadOrders();
+    // 啟動管理員介面的初始化流程
+    function initAdmin() {
+        // 跳出對話框要求輸入密碼
+        adminToken = prompt("🔒 進入店家管理控制台\n請輸入管理員 Token：");
+        
+        if (!adminToken) {
+            alert("必須輸入密碼才能檢視與管理訂單！");
+            document.getElementById('list-unpaid').innerHTML = '<span style="color:red;">未授權，請重新整理頁面。</span>';
+            return;
+        }
 
-    // 2. 設定每 15 秒 (15000 毫秒) 自動在背景執行 loadOrders() 抓取新資料
-    setInterval(loadOrders, 15000); 
+        // 有輸入密碼才開始抓資料與設定定時更新
+        loadOrders();
+        setInterval(loadOrders, 15000); 
+    }
+
+    // 執行初始化
+    initAdmin();
 
 </script>
 </body>
