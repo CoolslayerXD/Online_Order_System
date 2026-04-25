@@ -1,15 +1,3 @@
-# Issue 6：透過 GitHub Actions 在部署時注入 GAS_URL
-# 讓真實的 API 網址只存在 GitHub Secret，不進入原始碼
-#
-# ── 使用前必做的設定步驟 ──────────────────────────────────────
-# 1. 前往你的 repo → Settings → Secrets and variables → Actions
-# 2. 點「New repository secret」
-# 3. Name 填：GAS_URL
-#    Value 填：你的 GAS 部署網址（https://script.google.com/macros/s/...）
-# 4. 前往 Settings → Pages → Source → 選「GitHub Actions」
-# 5. 把修改後的三個檔案 push 到 main branch，Workflow 會自動執行
-# ──────────────────────────────────────────────────────────────
-
 name: Deploy to GitHub Pages
 
 on:
