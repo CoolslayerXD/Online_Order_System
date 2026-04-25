@@ -66,7 +66,8 @@
 <audio id="notificationSound" src="dingdong.mp3" preload="auto"></audio>
 
 <script>
-  const GAS_URL = "https://script.google.com/macros/s/AKfycbxLgIJFuF4Dpw0UKjh-p25jr6nCeKEE7E_XRy9ZfHQK-uNoaUUFjjQOjU812SDn2PcWFw/exec";
+  // Issue 6：GAS URL 由 GitHub Actions 在部署時從 Secret 注入，原始碼不含真實網址
+  const GAS_URL = "__GAS_URL__";
   let lastOrderCount = 0;
   let soundEnabled   = false;
   let adminToken     = "";
