@@ -1,192 +1,267 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>店家管理控制台</title>
-    <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #ecf0f1; padding: 20px; }
-        .header-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        h1 { color: #2c3e50; margin: 0; }
-        .control-panel { display: flex; gap: 10px; align-items: center; }
-        .sound-btn { padding: 10px 20px; font-size: 16px; border-radius: 8px; border: none; cursor: pointer; font-weight: bold; transition: 0.3s; }
-        .sound-off { background-color: #e74c3c; color: white; }
-        .sound-on { background-color: #27ae60; color: white; box-shadow: 0 0 10px #27ae60; }
-        .refresh-status { font-size: 14px; color: #7f8c8d; }
-
-        .board { display: flex; gap: 20px; overflow-x: auto; }
-        .column { flex: 1; min-width: 300px; background: white; border-radius: 8px; padding: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-        .column h3 { text-align: center; padding-bottom: 10px; border-bottom: 3px solid; }
-        .col-unpaid h3 { border-color: #e74c3c; color: #e74c3c; } 
-        .col-paid h3 { border-color: #27ae60; color: #27ae60; } 
-        .col-cancel h3 { border-color: #7f8c8d; color: #7f8c8d; } 
-        
-        .order-card { background: #f9f9f9; border: 1px solid #ddd; border-left: 5px solid #ccc; padding: 15px; margin-bottom: 15px; border-radius: 5px; animation: fadeIn 0.5s; }
-        .order-card.unpaid { border-left-color: #e74c3c; }
-        .order-card.paid { border-left-color: #27ae60; }
-        .order-card.cancel { border-left-color: #7f8c8d; opacity: 0.7; }
-        
-        .actions { display: flex; gap: 10px; margin-top: 10px; }
-        .btn { flex: 1; padding: 8px; border: none; border-radius: 4px; cursor: pointer; color: white; font-weight: bold; }
-        .btn-pay { background: #27ae60; }
-        .btn-cancel { background: #e74c3c; }
-        .btn:hover { filter: brightness(1.1); }
-        .btn:disabled { background: #bdc3c7; cursor: not-allowed; }
-
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>店家管理控制台</title>
+  <style>
+    body { font-family: 'Segoe UI', sans-serif; background: #ecf0f1; padding: 20px; }
+    .header-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    h1 { color: #2c3e50; margin: 0; }
+    .control-panel { display: flex; gap: 10px; align-items: center; }
+    .sound-btn { padding: 10px 20px; font-size: 16px; border-radius: 8px; border: none; cursor: pointer; font-weight: bold; transition: 0.3s; }
+    .sound-off { background-color: #e74c3c; color: white; }
+    .sound-on  { background-color: #27ae60; color: white; box-shadow: 0 0 10px #27ae60; }
+    .refresh-status { font-size: 14px; color: #7f8c8d; }
+    .board { display: flex; gap: 20px; overflow-x: auto; }
+    .column { flex: 1; min-width: 300px; background: white; border-radius: 8px; padding: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+    .column h3 { text-align: center; padding-bottom: 10px; border-bottom: 3px solid; }
+    .col-unpaid h3 { border-color: #e74c3c; color: #e74c3c; }
+    .col-paid   h3 { border-color: #27ae60; color: #27ae60; }
+    .col-cancel h3 { border-color: #7f8c8d; color: #7f8c8d; }
+    .order-card { background: #f9f9f9; border: 1px solid #ddd; border-left: 5px solid #ccc; padding: 15px; margin-bottom: 15px; border-radius: 5px; animation: fadeIn 0.5s; }
+    .order-card.unpaid { border-left-color: #e74c3c; }
+    .order-card.paid   { border-left-color: #27ae60; }
+    .order-card.cancel { border-left-color: #7f8c8d; opacity: 0.7; }
+    .card-time    { font-size: 12px; color: #666; margin-bottom: 4px; }
+    .card-id      { font-size: 18px; font-weight: bold; display: block; margin-bottom: 6px; }
+    .card-items   { margin: 8px 0; font-weight: bold; color: #2980b9; }
+    .card-total   { color: #d35400; font-weight: bold; }
+    .actions { display: flex; gap: 10px; margin-top: 10px; }
+    .btn { flex: 1; padding: 8px; border: none; border-radius: 4px; cursor: pointer; color: white; font-weight: bold; }
+    .btn-pay    { background: #27ae60; }
+    .btn-cancel { background: #e74c3c; }
+    .btn:hover    { filter: brightness(1.1); }
+    .btn:disabled { background: #bdc3c7; cursor: not-allowed; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+  </style>
 </head>
 <body>
 
 <div class="header-container">
-    <h1>👨‍🍳 訂單管理看板</h1>
-    <div class="control-panel">
-        <span class="refresh-status" id="last-update">等待授權...</span>
-        <button id="soundToggle" class="sound-btn sound-off" onclick="toggleSound()">
-            🔇 點擊啟用接單音效
-        </button>
-    </div>
+  <h1>👨‍🍳 訂單管理看板</h1>
+  <div class="control-panel">
+    <span class="refresh-status" id="last-update">等待授權...</span>
+    <button id="soundToggle" class="sound-btn sound-off" onclick="toggleSound()">
+      🔇 點擊啟用接單音效
+    </button>
+  </div>
 </div>
 
 <div class="board">
-    <div class="column col-unpaid">
-        <h3>未付款</h3>
-        <div id="list-unpaid">請先輸入管理員密碼...</div>
-    </div>
-    <div class="column col-paid">
-        <h3>已付款</h3>
-        <div id="list-paid"></div>
-    </div>
-    <div class="column col-cancel">
-        <h3>不成立</h3>
-        <div id="list-cancel"></div>
-    </div>
+  <div class="column col-unpaid">
+    <h3>未付款</h3>
+    <div id="list-unpaid">請先輸入管理員密碼...</div>
+  </div>
+  <div class="column col-paid">
+    <h3>已付款</h3>
+    <div id="list-paid"></div>
+  </div>
+  <div class="column col-cancel">
+    <h3>不成立</h3>
+    <div id="list-cancel"></div>
+  </div>
 </div>
 
 <audio id="notificationSound" src="dingdong.mp3" preload="auto"></audio>
 
 <script>
-    const GAS_URL = "https://script.google.com/macros/s/AKfycbxLgIJFuF4Dpw0UKjh-p25jr6nCeKEE7E_XRy9ZfHQK-uNoaUUFjjQOjU812SDn2PcWFw/exec";
-    let lastOrderCount = 0; 
-    let soundEnabled = false;
-    let adminToken = "";
+  const GAS_URL = "https://script.google.com/macros/s/AKfycbxLgIJFuF4Dpw0UKjh-p25jr6nCeKEE7E_XRy9ZfHQK-uNoaUUFjjQOjU812SDn2PcWFw/exec";
+  let lastOrderCount = 0;
+  let soundEnabled   = false;
+  let adminToken     = "";
+  let refreshTimer   = null;
 
-    function toggleSound() {
-        const btn = document.getElementById('soundToggle');
-        const audio = document.getElementById('notificationSound');
-        
-        if (!soundEnabled) {
-            audio.play().then(() => {
-                audio.pause();
-                audio.currentTime = 0;
-                soundEnabled = true;
-                btn.className = "sound-btn sound-on";
-                btn.innerHTML = "🔊 接單音效已開啟";
-            }).catch(err => {
-                alert("瀏覽器阻擋音效，請允許網站播放聲音。");
-            });
-        } else {
-            soundEnabled = false;
-            btn.className = "sound-btn sound-off";
-            btn.innerHTML = "🔇 點擊啟用接單音效";
+  function toggleSound() {
+    const btn   = document.getElementById('soundToggle');
+    const audio = document.getElementById('notificationSound');
+    if (!soundEnabled) {
+      audio.play()
+        .then(() => {
+          audio.pause();
+          audio.currentTime = 0;
+          soundEnabled = true;
+          btn.className   = "sound-btn sound-on";
+          btn.textContent = "🔊 接單音效已開啟";
+        })
+        .catch(() => { alert("瀏覽器阻擋音效，請允許網站播放聲音。"); });
+    } else {
+      soundEnabled    = false;
+      btn.className   = "sound-btn sound-off";
+      btn.textContent = "🔇 點擊啟用接單音效";
+    }
+  }
+
+  // ── Issue 2：getOrders 改為 POST，token 放 body，不放 URL ──
+  function loadOrders() {
+    if (!adminToken) return;
+    document.getElementById('last-update').textContent = "🔄 同步中...";
+
+    fetch(GAS_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: "getOrders", token: adminToken })
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === "error") {
+          alert(data.message);
+          document.getElementById('last-update').textContent = "⚠️ 驗證失敗";
+          document.getElementById('list-unpaid').textContent = '密碼錯誤，請重新整理頁面。';
+          adminToken = "";
+          if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+          return;
         }
-    }
 
-    function loadOrders() {
-        if (!adminToken) return; 
-
-        document.getElementById('last-update').innerText = "🔄 同步中...";
-
-        fetch(`${GAS_URL}?action=getOrders&token=${encodeURIComponent(adminToken)}`)
-            .then(res => res.json())
-            .then(data => {
-                if (data.status === "error") {
-                    alert(data.message);
-                    document.getElementById('last-update').innerText = "⚠️ 驗證失敗";
-                    document.getElementById('list-unpaid').innerHTML = '<span style="color:red;">密碼錯誤，請重新整理頁面。</span>';
-                    adminToken = ""; 
-                    return;
-                }
-
-                if (lastOrderCount !== 0 && data.length > lastOrderCount && soundEnabled) {
-                    document.getElementById('notificationSound').play();
-                }
-                lastOrderCount = data.length; 
-
-                document.getElementById('list-unpaid').innerHTML = '';
-                document.getElementById('list-paid').innerHTML = '';
-                document.getElementById('list-cancel').innerHTML = '';
-                
-                data.forEach(order => {
-                    let cssClass = '', buttons = '';
-                    if (order.status === '未付款') {
-                        cssClass = 'unpaid';
-                        buttons = `
-                            <button class="btn btn-pay" onclick="updateStatus('${order.orderId}', '已付款', this)">✔ 已付款</button>
-                            <button class="btn btn-cancel" onclick="updateStatus('${order.orderId}', '不成立', this)">✖ 退單(還庫存)</button>
-                        `;
-                    } else if (order.status === '已付款') {
-                        cssClass = 'paid';
-                        buttons = `<span>✅ 交易完成</span>`;
-                    } else {
-                        cssClass = 'cancel';
-                        buttons = `<span>⛔ 庫存已退還</span>`;
-                    }
-
-                    const timeStr = new Date(order.time).toLocaleString();
-                    const cardHtml = `
-                        <div class="order-card ${cssClass}">
-                            <div style="font-size:12px; color:#666;">${timeStr}</div>
-                            <strong style="font-size: 18px;">${order.orderId}</strong>
-                            <div style="margin: 8px 0; font-weight: bold; color:#2980b9;">${order.items}</div>
-                            <div style="color: #d35400; font-weight: bold;">總額：$${order.totalPrice}</div>
-                            <div class="actions">${buttons}</div>
-                        </div>
-                    `;
-
-                    if (order.status === '未付款') document.getElementById('list-unpaid').innerHTML += cardHtml;
-                    if (order.status === '已付款') document.getElementById('list-paid').innerHTML += cardHtml;
-                    if (order.status === '不成立') document.getElementById('list-cancel').innerHTML += cardHtml;
-                });
-
-                const now = new Date();
-                document.getElementById('last-update').innerText = `最後更新: ${now.getHours()}:${("0"+now.getMinutes()).slice(-2)}:${("0"+now.getSeconds()).slice(-2)}`;
-            })
-            .catch(err => {
-                document.getElementById('last-update').innerText = "⚠️ 連線異常，重試中";
-            });
-    }
-
-    function updateStatus(orderId, newStatus, btnElement) {
-        let msg = newStatus === '不成立' ? `確定要將 [${orderId}] 標記為不成立？\n(系統將自動退還對應庫存)` : `確認 [${orderId}] 已收款？`;
-        if (confirm(msg)) {
-            btnElement.innerText = "處理中...";
-            btnElement.disabled = true;
-
-            fetch(`${GAS_URL}?action=updateStatus&orderId=${orderId}&status=${newStatus}&token=${encodeURIComponent(adminToken)}`)
-                .then(res => res.text())
-                .then(text => {
-                    if(text.includes("error") || text.includes("驗證失敗")) {
-                        alert("驗證失敗，權限不足！");
-                    } else {
-                        loadOrders(); 
-                    }
-                });
+        if (lastOrderCount !== 0 && data.length > lastOrderCount && soundEnabled) {
+          document.getElementById('notificationSound').play();
         }
+        lastOrderCount = data.length;
+
+        // 清空三欄
+        ['list-unpaid', 'list-paid', 'list-cancel'].forEach(id => {
+          document.getElementById(id).innerHTML = '';
+        });
+
+        // Issue 5：用 DOM API 建立訂單卡片，所有訂單資料用 textContent
+        data.forEach(order => {
+          const card = createOrderCard(order);
+          if (order.status === '未付款')  document.getElementById('list-unpaid').appendChild(card);
+          if (order.status === '已付款')  document.getElementById('list-paid').appendChild(card);
+          if (order.status === '不成立')  document.getElementById('list-cancel').appendChild(card);
+        });
+
+        const now = new Date();
+        document.getElementById('last-update').textContent =
+          '最後更新: ' + now.getHours() + ':' + ("0"+now.getMinutes()).slice(-2) + ':' + ("0"+now.getSeconds()).slice(-2);
+      })
+      .catch(() => {
+        document.getElementById('last-update').textContent = "⚠️ 連線異常，重試中";
+      });
+  }
+
+  // ── Issue 5：改用 DOM API 建立卡片，所有文字用 textContent ──
+  function createOrderCard(order) {
+    const cssClass = order.status === '未付款' ? 'unpaid' : order.status === '已付款' ? 'paid' : 'cancel';
+    const card = document.createElement('div');
+    card.className = 'order-card ' + cssClass;
+
+    // 時間
+    const timeDiv = document.createElement('div');
+    timeDiv.className = 'card-time';
+    timeDiv.textContent = new Date(order.time).toLocaleString();
+    card.appendChild(timeDiv);
+
+    // 訂單號
+    const idSpan = document.createElement('strong');
+    idSpan.className = 'card-id';
+    idSpan.textContent = order.orderId; // textContent，防 XSS
+    card.appendChild(idSpan);
+
+    // 品項
+    const itemsDiv = document.createElement('div');
+    itemsDiv.className = 'card-items';
+    itemsDiv.textContent = order.items; // textContent，防 XSS
+    card.appendChild(itemsDiv);
+
+    // 總額
+    const totalDiv = document.createElement('div');
+    totalDiv.className = 'card-total';
+    totalDiv.textContent = '總額：$' + order.totalPrice; // 數字，安全
+    card.appendChild(totalDiv);
+
+    // 操作按鈕
+    const actionsDiv = document.createElement('div');
+    actionsDiv.className = 'actions';
+
+    if (order.status === '未付款') {
+      const payBtn = document.createElement('button');
+      payBtn.className = 'btn btn-pay';
+      payBtn.textContent = '✔ 已付款';
+      // Issue 5：用 dataset 傳遞 orderId，不拼入 onclick 字串
+      payBtn.dataset.orderId = order.orderId;
+      payBtn.dataset.newStatus = '已付款';
+      payBtn.addEventListener('click', handleStatusClick);
+
+      const cancelBtn = document.createElement('button');
+      cancelBtn.className = 'btn btn-cancel';
+      cancelBtn.textContent = '✖ 退單(還庫存)';
+      cancelBtn.dataset.orderId = order.orderId;
+      cancelBtn.dataset.newStatus = '不成立';
+      cancelBtn.addEventListener('click', handleStatusClick);
+
+      actionsDiv.appendChild(payBtn);
+      actionsDiv.appendChild(cancelBtn);
+    } else if (order.status === '已付款') {
+      const doneSpan = document.createElement('span');
+      doneSpan.textContent = '✅ 交易完成';
+      actionsDiv.appendChild(doneSpan);
+    } else {
+      const cancelSpan = document.createElement('span');
+      cancelSpan.textContent = '⛔ 庫存已退還';
+      actionsDiv.appendChild(cancelSpan);
     }
 
-    function initAdmin() {
-        adminToken = prompt("🔒 進入店家管理控制台\n請輸入管理員 Token：");
-        if (!adminToken) {
-            alert("必須輸入密碼才能檢視與管理訂單！");
-            document.getElementById('list-unpaid').innerHTML = '<span style="color:red;">未授權，請重新整理頁面。</span>';
-            return;
-        }
-        loadOrders();
-        setInterval(loadOrders, 15000); 
-    }
+    card.appendChild(actionsDiv);
+    return card;
+  }
 
-    initAdmin();
+  function handleStatusClick(e) {
+    const btn       = e.currentTarget;
+    const orderId   = btn.dataset.orderId;
+    const newStatus = btn.dataset.newStatus;
+    updateStatus(orderId, newStatus, btn);
+  }
+
+  // ── Issue 2：updateStatus 改為 POST，token 放 body，不放 URL ──
+  function updateStatus(orderId, newStatus, btnElement) {
+    const msg = newStatus === '不成立'
+      ? '確定要將 [' + orderId + '] 標記為不成立？\n(系統將自動退還對應庫存)'
+      : '確認 [' + orderId + '] 已收款？';
+
+    if (confirm(msg)) {
+      btnElement.textContent = "處理中...";
+      btnElement.disabled    = true;
+
+      fetch(GAS_URL, {
+        method: 'POST',
+        body: JSON.stringify({
+          action:    "updateStatus",
+          token:     adminToken,
+          orderId:   orderId,
+          status:    newStatus
+        })
+      })
+        .then(res => res.json())
+        .then(res => {
+          if (res.status === "error") {
+            alert("操作失敗：" + res.message);
+            btnElement.textContent = "重試";
+            btnElement.disabled    = false;
+          } else {
+            loadOrders();
+          }
+        })
+        .catch(() => {
+          alert("連線異常，請重試");
+          btnElement.textContent = "重試";
+          btnElement.disabled    = false;
+        });
+    }
+  }
+
+  function initAdmin() {
+    adminToken = prompt("🔒 進入店家管理控制台\n請輸入管理員 Token：");
+    if (!adminToken || !adminToken.trim()) {
+      alert("必須輸入密碼才能檢視與管理訂單！");
+      document.getElementById('list-unpaid').textContent = '未授權，請重新整理頁面。';
+      return;
+    }
+    adminToken = adminToken.trim();
+    loadOrders();
+    refreshTimer = setInterval(loadOrders, 15000);
+  }
+
+  initAdmin();
 </script>
 </body>
 </html>
