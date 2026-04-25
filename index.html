@@ -55,7 +55,7 @@
     <h2>確認您的訂單</h2>
     <div id="order-summary"></div>
     <button id="btn-submit" class="btn" onclick="submitOrder()">送出訂單</button>
-    <button class="btn btn-secondary" onclick="confirmBackToMenu()">返回修改</button>
+    <button id="btn-back" class="btn btn-secondary" onclick="confirmBackToMenu()">返回修改</button>
   </div>
   <div id="view-success" class="hidden">
     <h2>訂單已成立！</h2>
@@ -168,7 +168,8 @@
       const qtySpan = document.createElement('span');
       qtySpan.id = 'qty-' + item.id;
       qtySpan.style.cssText = 'font-size:18px; font-weight:bold; width:20px; text-align:center;';
-      qtySpan.textContent = '0';
+      // Bug fix：從 cart 物件讀取已選數量，切換分類時不歸零
+      qtySpan.textContent = cart[item.id] || 0;
 
       const plusBtn = document.createElement('button');
       plusBtn.className = 'qty-btn';
@@ -273,15 +274,20 @@
   }
 
   function submitOrder() {
-    // Issue 3：若結帳 Token 遺失（例如頁面存留過久），提示重新整理
     if (!checkoutToken) {
       alert('結帳憑證已失效，請重新整理頁面後再試！');
       return;
     }
 
-    const btn = document.getElementById('btn-submit');
-    btn.textContent = '處理中...';
-    btn.disabled = true;
+    const submitBtn = document.getElementById('btn-submit');
+    const backBtn   = document.getElementById('btn-back');
+
+    // 送出後立即鎖死所有操作，防止重複送單或返回修改
+    submitBtn.textContent = '處理中...';
+    submitBtn.disabled    = true;
+    backBtn.disabled      = true;
+    backBtn.style.opacity = '0.4';
+    backBtn.style.cursor  = 'not-allowed';
 
     const finalCart = [];
     menuData.forEach(item => {
@@ -304,16 +310,14 @@
       .then(res => {
         if (res.status === "error") {
           alert(res.message);
-          // Issue 3：送單失敗後 Token 已被消耗，提示用戶重新整理取得新 Token
-          btn.textContent = '送出失敗，請重新整理頁面';
-          btn.disabled = true;
+          submitBtn.textContent = '送出失敗，請重新整理頁面';
+          submitBtn.disabled = true;
+          // 送單失敗時 token 已消耗，返回修改也無法再送單，維持鎖定狀態
         } else {
-          // Issue 4 + 5：顯示後端回傳的金額與品項（伺服器計算值），用 textContent
           document.getElementById('res-time').textContent = new Date().toLocaleString();
           document.getElementById('res-id').textContent = res.orderId;
           document.getElementById('res-total').textContent = res.totalPrice;
 
-          // Issue 5：品項列表用 DOM 建構
           const itemsDiv = document.getElementById('res-items');
           itemsDiv.innerHTML = '';
           res.itemsDetails.split(', ').forEach(line => {
@@ -328,8 +332,8 @@
       })
       .catch(() => {
         alert('系統連線異常，請再試一次');
-        btn.textContent = '送出失敗，請重新整理頁面';
-        btn.disabled = true;
+        submitBtn.textContent = '送出失敗，請重新整理頁面';
+        submitBtn.disabled = true;
       });
   }
 
