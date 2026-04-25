@@ -1,0 +1,12 @@
+# Issue 6：確保任何本機測試用的設定檔不會意外進入 repo
+# 若你在本機測試時有替換過 GAS_URL，這裡防止意外 commit 進去
+
+# 本機測試設定（若有）
+config.local.js
+*.local.html
+
+# 常見系統/編輯器暫存檔
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,0 +1,57 @@
+# Issue 6：透過 GitHub Actions 在部署時注入 GAS_URL
+# 讓真實的 API 網址只存在 GitHub Secret，不進入原始碼
+#
+# ── 使用前必做的設定步驟 ──────────────────────────────────────
+# 1. 前往你的 repo → Settings → Secrets and variables → Actions
+# 2. 點「New repository secret」
+# 3. Name 填：GAS_URL
+#    Value 填：你的 GAS 部署網址（https://script.google.com/macros/s/...）
+# 4. 前往 Settings → Pages → Source → 選「GitHub Actions」
+# 5. 把修改後的三個檔案 push 到 main branch，Workflow 會自動執行
+# ──────────────────────────────────────────────────────────────
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: # 允許手動觸發
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 把兩個 HTML 裡的 __GAS_URL__ 替換成真實網址（來自 Secret）
+      - name: Inject GAS_URL from Secret
+        run: |
+          sed -i 's|__GAS_URL__|${{ secrets.GAS_URL }}|g' index.html
+          sed -i 's|__GAS_URL__|${{ secrets.GAS_URL }}|g' admin.html
+          echo "✅ GAS_URL injected successfully"
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'   # 上傳整個 repo 根目錄
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
