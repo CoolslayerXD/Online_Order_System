@@ -55,7 +55,7 @@
     <h2>確認您的訂單</h2>
     <div id="order-summary"></div>
     <button id="btn-submit" class="btn" onclick="submitOrder()">送出訂單</button>
-    <button class="btn btn-secondary" onclick="switchView('view-menu')">返回修改</button>
+    <button class="btn btn-secondary" onclick="confirmBackToMenu()">返回修改</button>
   </div>
   <div id="view-success" class="hidden">
     <h2>訂單已成立！</h2>
@@ -72,7 +72,8 @@
 </div>
 
 <script>
-  const GAS_URL = "https://script.google.com/macros/s/AKfycbxLgIJFuF4Dpw0UKjh-p25jr6nCeKEE7E_XRy9ZfHQK-uNoaUUFjjQOjU812SDn2PcWFw/exec";
+  // Issue 6：GAS URL 由 GitHub Actions 在部署時從 Secret 注入，原始碼不含真實網址
+  const GAS_URL = "__GAS_URL__";
 
   let menuData = [];
   let cart = {};
@@ -330,6 +331,13 @@
         btn.textContent = '送出失敗，請重新整理頁面';
         btn.disabled = true;
       });
+  }
+
+  // Issue 10：返回修改前先確認，避免誤觸清空訂單
+  function confirmBackToMenu() {
+    if (confirm('確定要返回修改嗎？\n（已選餐點不會清除）')) {
+      switchView('view-menu');
+    }
   }
 
   function switchView(id) {
