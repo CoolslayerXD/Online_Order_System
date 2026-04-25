@@ -75,19 +75,20 @@
   // Issue 6：GAS URL 由 GitHub Actions 在部署時從 Secret 注入，原始碼不含真實網址
   const GAS_URL = "__GAS_URL__";
 
-  let menuData = [];
-  let cart = {};
+  let menuData       = [];
+  let cart           = {};           // 全域購物車，key 一律用 String(id)
   let currentCategory = '馬來西亞';
-  let checkoutToken = null; // Issue 3：存放後端核發的一次性 Token
+  let checkoutToken  = null;
+  let isSubmitting   = false;        // Bug2 旗標：送單中禁止一切導頁操作
 
-  // ── 載入菜單（同時取得一次性結帳 Token）──
+  // ── 載入菜單 ──
   fetch(GAS_URL + "?action=getMenu")
     .then(res => res.json())
     .then(data => {
-      // Issue 3：後端回傳格式改為 { menu: [...], checkoutToken: "..." }
       checkoutToken = data.checkoutToken;
       menuData = data.menu;
-      menuData.forEach(item => { cart[item.id] = 0; });
+      // Bug1 修正：初始化 cart 時統一用 String(id) 作為 key
+      menuData.forEach(item => { cart[String(item.id)] = 0; });
       renderMenu();
       switchView('view-menu');
     })
@@ -105,7 +106,7 @@
     renderMenu();
   }
 
-  // ── Issue 5：renderMenu 改用 DOM API，不使用 innerHTML 拼接未知資料 ──
+  // ── 渲染菜單 ──
   function renderMenu() {
     const list = document.getElementById('menu-list');
     list.innerHTML = '';
@@ -120,28 +121,27 @@
     }
 
     filteredMenu.forEach(item => {
+      // Bug1 修正：所有地方統一用 String(item.id)
+      const sid = String(item.id);
+
       const wrapper = document.createElement('div');
       wrapper.className = 'menu-item';
 
-      // ── 左側資訊區 ──
       const infoDiv = document.createElement('div');
       infoDiv.className = 'item-info';
 
       const topDiv = document.createElement('div');
 
-      // 商品名稱（textContent 防 XSS）
       const nameDiv = document.createElement('div');
       nameDiv.className = 'item-name';
       nameDiv.textContent = item.name;
 
-      // 價格（數字，安全）
       const priceSpan = document.createElement('span');
       priceSpan.className = 'item-price';
       priceSpan.textContent = '$' + item.price;
 
-      // 庫存警告
       const stockSpan = document.createElement('span');
-      stockSpan.id = 'stock-msg-' + item.id;
+      stockSpan.id = 'stock-msg-' + sid;
       stockSpan.className = 'stock-warning';
       if (item.stock === 0) {
         stockSpan.textContent = '已售罄';
@@ -153,7 +153,6 @@
       topDiv.appendChild(priceSpan);
       topDiv.appendChild(stockSpan);
 
-      // 數量控制按鈕（用 data-id 儲存 id，不放在 onclick 字串內）
       const qtyDiv = document.createElement('div');
       qtyDiv.className = 'qty-controls';
 
@@ -161,21 +160,21 @@
       minusBtn.className = 'qty-btn';
       minusBtn.textContent = '-';
       minusBtn.disabled = item.stock === 0;
-      minusBtn.dataset.id = item.id;
+      minusBtn.dataset.id = sid;      // Bug1：存字串版 id
       minusBtn.dataset.change = '-1';
       minusBtn.addEventListener('click', handleQtyClick);
 
       const qtySpan = document.createElement('span');
-      qtySpan.id = 'qty-' + item.id;
+      qtySpan.id = 'qty-' + sid;
       qtySpan.style.cssText = 'font-size:18px; font-weight:bold; width:20px; text-align:center;';
-      // Bug fix：從 cart 物件讀取已選數量，切換分類時不歸零
-      qtySpan.textContent = cart[item.id] || 0;
+      // Bug1 修正：用字串 key 讀 cart，切換分類時正確還原數量
+      qtySpan.textContent = cart[sid] || 0;
 
       const plusBtn = document.createElement('button');
       plusBtn.className = 'qty-btn';
       plusBtn.textContent = '+';
       plusBtn.disabled = item.stock === 0;
-      plusBtn.dataset.id = item.id;
+      plusBtn.dataset.id = sid;       // Bug1：存字串版 id
       plusBtn.dataset.change = '1';
       plusBtn.addEventListener('click', handleQtyClick);
 
@@ -186,14 +185,12 @@
       infoDiv.appendChild(topDiv);
       infoDiv.appendChild(qtyDiv);
 
-      // ── 右側圖片（Issue 5：驗證圖片 URL，只允許相對路徑或 https）──
       const img = document.createElement('img');
       img.className = 'item-image';
-      img.alt = item.name; // textContent-safe
+      img.alt = item.name;
       const imgSrc = String(item.image || '');
       img.src = (imgSrc.startsWith('https://') || (!imgSrc.startsWith('http') && !imgSrc.startsWith('//')))
-        ? imgSrc
-        : 'myimage.jpg';
+        ? imgSrc : 'myimage.jpg';
 
       wrapper.appendChild(infoDiv);
       wrapper.appendChild(img);
@@ -202,28 +199,30 @@
   }
 
   function handleQtyClick(e) {
-    const id = e.currentTarget.dataset.id;
-    const change = parseInt(e.currentTarget.dataset.change, 10);
-    updateQty(id, change);
+    // Bug1：dataset 讀回來就是 string，直接傳入，updateQty 內部也用 string key
+    updateQty(e.currentTarget.dataset.id, parseInt(e.currentTarget.dataset.change, 10));
   }
 
-  function updateQty(id, change) {
-    const item = menuData.find(m => m.id === id);
-    const newQty = cart[id] + change;
+  function updateQty(sid, change) {
+    // Bug1 修正：用 String(m.id) 比對，消除 number vs string 的 strict equality 問題
+    const item = menuData.find(m => String(m.id) === sid);
+    if (!item) return;
+
+    const newQty = (cart[sid] || 0) + change;
     if (newQty < 0) return;
     if (newQty > item.stock) { alert('【' + item.name + '】已達庫存上限！'); return; }
-    cart[id] = newQty;
 
-    document.getElementById('qty-' + id).textContent = cart[id];
+    cart[sid] = newQty;
+    document.getElementById('qty-' + sid).textContent = newQty;
 
-    const remain = item.stock - cart[id];
-    const msgSpan = document.getElementById('stock-msg-' + id);
-    if (remain === 0)       msgSpan.textContent = '已達購買上限';
-    else if (remain <= 10)  msgSpan.textContent = '最後 ' + remain + ' 份';
-    else                    msgSpan.textContent = '';
+    const remain = item.stock - newQty;
+    const msgSpan = document.getElementById('stock-msg-' + sid);
+    if (remain === 0)      msgSpan.textContent = '已達購買上限';
+    else if (remain <= 10) msgSpan.textContent = '最後 ' + remain + ' 份';
+    else                   msgSpan.textContent = '';
   }
 
-  // ── Issue 5：確認頁改用 DOM 建構，不用 innerHTML ──
+  // ── 前往確認頁 ──
   function goToConfirm() {
     let total = 0;
     const summaryDiv = document.getElementById('order-summary');
@@ -233,16 +232,17 @@
     let hasItem = false;
 
     menuData.forEach(item => {
-      if (cart[item.id] > 0) {
+      const sid = String(item.id);
+      if (cart[sid] > 0) {
         hasItem = true;
-        const sub = cart[item.id] * item.price;
+        const sub = cart[sid] * item.price;
         total += sub;
 
         const row = document.createElement('div');
         row.className = 'confirm-item';
 
         const nameSpan = document.createElement('span');
-        nameSpan.textContent = item.name + ' × ' + cart[item.id];
+        nameSpan.textContent = item.name + ' × ' + cart[sid];
 
         const priceSpan = document.createElement('span');
         priceSpan.textContent = '$' + sub;
@@ -273,37 +273,37 @@
     switchView('view-confirm');
   }
 
+  // ── 送出訂單 ──
   function submitOrder() {
     if (!checkoutToken) {
       alert('結帳憑證已失效，請重新整理頁面後再試！');
       return;
     }
 
+    // Bug2 修正：設定旗標，讓 confirmBackToMenu 徹底無效
+    isSubmitting = true;
+
     const submitBtn = document.getElementById('btn-submit');
     const backBtn   = document.getElementById('btn-back');
 
-    // 送出後立即鎖死所有操作，防止重複送單或返回修改
-    submitBtn.textContent = '處理中...';
-    submitBtn.disabled    = true;
-    backBtn.disabled      = true;
-    backBtn.style.opacity = '0.4';
-    backBtn.style.cursor  = 'not-allowed';
+    // Bug2 修正：同時用 disabled + pointer-events:none + 視覺反饋，三層保護
+    submitBtn.textContent          = '處理中...';
+    submitBtn.disabled             = true;
+    backBtn.disabled               = true;
+    backBtn.style.pointerEvents    = 'none';
+    backBtn.style.opacity          = '0.4';
+    backBtn.style.cursor           = 'not-allowed';
 
     const finalCart = [];
     menuData.forEach(item => {
-      if (cart[item.id] > 0) {
-        finalCart.push({ id: item.id, name: item.name, qty: cart[item.id] });
+      const sid = String(item.id);
+      if (cart[sid] > 0) {
+        finalCart.push({ id: item.id, name: item.name, qty: cart[sid] });
       }
     });
 
-    // Issue 3：送出一次性 Token；Issue 4：不再傳送 totalPrice / itemsDetails
-    const payload = {
-      cart: finalCart,
-      checkoutToken: checkoutToken
-    };
-
-    // 清除本地 Token，防止使用者連按送出
-    checkoutToken = null;
+    const payload = { cart: finalCart, checkoutToken: checkoutToken };
+    checkoutToken = null; // 立即銷毀本地 token
 
     fetch(GAS_URL, { method: 'POST', body: JSON.stringify(payload) })
       .then(res => res.json())
@@ -311,11 +311,9 @@
         if (res.status === "error") {
           alert(res.message);
           submitBtn.textContent = '送出失敗，請重新整理頁面';
-          submitBtn.disabled = true;
-          // 送單失敗時 token 已消耗，返回修改也無法再送單，維持鎖定狀態
         } else {
           document.getElementById('res-time').textContent = new Date().toLocaleString();
-          document.getElementById('res-id').textContent = res.orderId;
+          document.getElementById('res-id').textContent   = res.orderId;
           document.getElementById('res-total').textContent = res.totalPrice;
 
           const itemsDiv = document.getElementById('res-items');
@@ -333,12 +331,13 @@
       .catch(() => {
         alert('系統連線異常，請再試一次');
         submitBtn.textContent = '送出失敗，請重新整理頁面';
-        submitBtn.disabled = true;
       });
   }
 
-  // Issue 10：返回修改前先確認，避免誤觸清空訂單
+  // ── 返回修改（含確認 + 送單中鎖定）──
   function confirmBackToMenu() {
+    // Bug2 修正：送單進行中，JS 旗標直接擋掉，即使按鈕 disabled 失效也安全
+    if (isSubmitting) return;
     if (confirm('確定要返回修改嗎？\n（已選餐點不會清除）')) {
       switchView('view-menu');
     }
