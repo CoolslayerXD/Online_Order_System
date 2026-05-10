@@ -32,6 +32,14 @@
   </style>
 </head>
 <body>
+<!-- Bug2 修正：送單中的全螢幕遮罩，物理覆蓋一切操作 -->
+<div id="submit-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:9999; align-items:center; justify-content:center;">
+  <div style="background:white; padding:30px 40px; border-radius:12px; text-align:center; box-shadow:0 8px 32px rgba(0,0,0,0.3);">
+    <div style="font-size:36px; margin-bottom:12px;">⏳</div>
+    <p style="font-size:18px; font-weight:bold; margin:0 0 8px;">訂單處理中...</p>
+    <p style="color:#7f8c8d; margin:0; font-size:14px;">請稍候，請勿關閉此頁面</p>
+  </div>
+</div>
 <div class="container">
   <div id="view-loading"><h2>載入美味菜單中...</h2></div>
   <div id="view-error" class="hidden">
@@ -73,24 +81,21 @@
 </div>
 
 <script>
-  // Issue 6：GAS URL 由 GitHub Actions 在部署時從 Secret 注入，原始碼不含真實網址
   const GAS_URL = "__GAS_URL__";
 
-  let menuData       = [];
-  let cart           = {};           // 全域購物車，key 一律用 String(id)
+  let menuData        = [];
+  let cart            = {};
   let currentCategory = '馬來西亞';
-  let checkoutToken  = null;
-  let isSubmitting   = false;        // Bug2 旗標：送單中禁止一切導頁操作
+  let checkoutToken   = null;
 
-  // ── 載入菜單 ──
+  // ── 載入菜單（只執行一次）──
   fetch(GAS_URL + "?action=getMenu")
     .then(res => res.json())
     .then(data => {
       checkoutToken = data.checkoutToken;
       menuData = data.menu;
-      // Bug1 修正：初始化 cart 時統一用 String(id) 作為 key
       menuData.forEach(item => { cart[String(item.id)] = 0; });
-      renderMenu();
+      renderAllItems(); // Bug1 根本修正：只渲染一次，之後用 CSS 切換
       switchView('view-menu');
     })
     .catch(() => {
@@ -98,36 +103,30 @@
       switchView('view-error');
     });
 
-  // ── 切換分類 ──
-  function switchCategory(category) {
-    currentCategory = category;
-    document.querySelectorAll('.tab').forEach(tab => {
-      tab.classList.toggle('active', tab.innerText === category);
-    });
-    renderMenu();
-  }
-
-  // ── 渲染菜單 ──
-  function renderMenu() {
+  // ── Bug1 根本修正：一次渲染所有分類的餐點，切換時只改 display ──
+  function renderAllItems() {
     const list = document.getElementById('menu-list');
     list.innerHTML = '';
 
-    const filteredMenu = menuData.filter(item => item.category === currentCategory);
-    if (filteredMenu.length === 0) {
+    if (menuData.length === 0) {
       const p = document.createElement('p');
       p.style.cssText = 'text-align:center; color:#95a5a6; padding:20px;';
-      p.textContent = '此分類目前沒有餐點';
+      p.textContent = '目前沒有餐點';
       list.appendChild(p);
       return;
     }
 
-    filteredMenu.forEach(item => {
-      // Bug1 修正：所有地方統一用 String(item.id)
-      const sid = String(item.id);
+    menuData.forEach(item => {
+      const sid      = String(item.id);
+      const category = item.category || '馬來西亞';
 
       const wrapper = document.createElement('div');
       wrapper.className = 'menu-item';
+      wrapper.dataset.category = category;
+      // 非當前分類的餐點先隱藏
+      wrapper.style.display = (category === currentCategory) ? 'flex' : 'none';
 
+      // 左側資訊
       const infoDiv = document.createElement('div');
       infoDiv.className = 'item-info';
 
@@ -144,38 +143,35 @@
       const stockSpan = document.createElement('span');
       stockSpan.id = 'stock-msg-' + sid;
       stockSpan.className = 'stock-warning';
-      if (item.stock === 0) {
-        stockSpan.textContent = '已售罄';
-      } else if (item.stock <= 10) {
-        stockSpan.textContent = '最後 ' + item.stock + ' 份';
-      }
+      if (item.stock === 0)       stockSpan.textContent = '已售罄';
+      else if (item.stock <= 10)  stockSpan.textContent = '最後 ' + item.stock + ' 份';
 
       topDiv.appendChild(nameDiv);
       topDiv.appendChild(priceSpan);
       topDiv.appendChild(stockSpan);
 
+      // 數量控制
       const qtyDiv = document.createElement('div');
       qtyDiv.className = 'qty-controls';
 
       const minusBtn = document.createElement('button');
       minusBtn.className = 'qty-btn';
       minusBtn.textContent = '-';
-      minusBtn.disabled = item.stock === 0;
-      minusBtn.dataset.id = sid;      // Bug1：存字串版 id
+      minusBtn.disabled = (item.stock === 0);
+      minusBtn.dataset.id = sid;
       minusBtn.dataset.change = '-1';
       minusBtn.addEventListener('click', handleQtyClick);
 
       const qtySpan = document.createElement('span');
       qtySpan.id = 'qty-' + sid;
       qtySpan.style.cssText = 'font-size:18px; font-weight:bold; width:20px; text-align:center;';
-      // Bug1 修正：用字串 key 讀 cart，切換分類時正確還原數量
-      qtySpan.textContent = cart[sid] || 0;
+      qtySpan.textContent = '0';   // 初始值永遠是 0，之後由 updateQty 更新
 
       const plusBtn = document.createElement('button');
       plusBtn.className = 'qty-btn';
       plusBtn.textContent = '+';
-      plusBtn.disabled = item.stock === 0;
-      plusBtn.dataset.id = sid;       // Bug1：存字串版 id
+      plusBtn.disabled = (item.stock === 0);
+      plusBtn.dataset.id = sid;
       plusBtn.dataset.change = '1';
       plusBtn.addEventListener('click', handleQtyClick);
 
@@ -186,6 +182,7 @@
       infoDiv.appendChild(topDiv);
       infoDiv.appendChild(qtyDiv);
 
+      // 右側圖片
       const img = document.createElement('img');
       img.className = 'item-image';
       img.alt = item.name;
@@ -199,13 +196,25 @@
     });
   }
 
+  // ── 切換分類：只改 display，DOM 和 qty 值完全保留 ──
+  function switchCategory(category) {
+    currentCategory = category;
+
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.classList.toggle('active', tab.innerText === category);
+    });
+
+    // Bug1 根本修正：不重建 DOM，只切換可見性
+    document.querySelectorAll('#menu-list .menu-item').forEach(el => {
+      el.style.display = (el.dataset.category === category) ? 'flex' : 'none';
+    });
+  }
+
   function handleQtyClick(e) {
-    // Bug1：dataset 讀回來就是 string，直接傳入，updateQty 內部也用 string key
     updateQty(e.currentTarget.dataset.id, parseInt(e.currentTarget.dataset.change, 10));
   }
 
   function updateQty(sid, change) {
-    // Bug1 修正：用 String(m.id) 比對，消除 number vs string 的 strict equality 問題
     const item = menuData.find(m => String(m.id) === sid);
     if (!item) return;
 
@@ -214,6 +223,8 @@
     if (newQty > item.stock) { alert('【' + item.name + '】已達庫存上限！'); return; }
 
     cart[sid] = newQty;
+
+    // Bug1 修正：DOM 元素一直存在（未被清除），getElementById 永遠能找到
     document.getElementById('qty-' + sid).textContent = newQty;
 
     const remain = item.stock - newQty;
@@ -223,14 +234,14 @@
     else                   msgSpan.textContent = '';
   }
 
-  // ── 前往確認頁 ──
+  // ── 確認頁 ──
   function goToConfirm() {
-    let total = 0;
     const summaryDiv = document.getElementById('order-summary');
     summaryDiv.innerHTML = '';
 
-    const fragment = document.createDocumentFragment();
-    let hasItem = false;
+    let total    = 0;
+    let hasItem  = false;
+    const frag   = document.createDocumentFragment();
 
     menuData.forEach(item => {
       const sid = String(item.id);
@@ -250,27 +261,27 @@
 
         row.appendChild(nameSpan);
         row.appendChild(priceSpan);
-        fragment.appendChild(row);
+        frag.appendChild(row);
       }
     });
 
     if (!hasItem) { alert('請先選擇餐點！'); return; }
 
     const hr = document.createElement('hr');
-    fragment.appendChild(hr);
+    frag.appendChild(hr);
 
-    const totalRow = document.createElement('div');
+    const totalRow   = document.createElement('div');
     totalRow.className = 'confirm-total';
     const totalLabel = document.createElement('span');
     totalLabel.textContent = '總計';
-    const totalAmt = document.createElement('span');
+    const totalAmt   = document.createElement('span');
     totalAmt.style.color = '#e67e22';
     totalAmt.textContent = '$' + total;
     totalRow.appendChild(totalLabel);
     totalRow.appendChild(totalAmt);
-    fragment.appendChild(totalRow);
+    frag.appendChild(totalRow);
 
-    summaryDiv.appendChild(fragment);
+    summaryDiv.appendChild(frag);
     switchView('view-confirm');
   }
 
@@ -281,40 +292,33 @@
       return;
     }
 
-    // Bug2 修正：設定旗標，讓 confirmBackToMenu 徹底無效
-    isSubmitting = true;
+    // Bug2 根本修正：顯示全螢幕遮罩，物理阻斷所有點擊
+    const overlay = document.getElementById('submit-overlay');
+    overlay.style.display = 'flex';
 
     const submitBtn = document.getElementById('btn-submit');
-    const backBtn   = document.getElementById('btn-back');
-
-    // Bug2 修正：同時用 disabled + pointer-events:none + 視覺反饋，三層保護
-    submitBtn.textContent          = '處理中...';
-    submitBtn.disabled             = true;
-    backBtn.disabled               = true;
-    backBtn.style.pointerEvents    = 'none';
-    backBtn.style.opacity          = '0.4';
-    backBtn.style.cursor           = 'not-allowed';
+    submitBtn.textContent = '處理中...';
+    submitBtn.disabled    = true;
 
     const finalCart = [];
     menuData.forEach(item => {
       const sid = String(item.id);
-      if (cart[sid] > 0) {
-        finalCart.push({ id: item.id, name: item.name, qty: cart[sid] });
-      }
+      if (cart[sid] > 0) finalCart.push({ id: item.id, name: item.name, qty: cart[sid] });
     });
 
     const payload = { cart: finalCart, checkoutToken: checkoutToken };
-    checkoutToken = null; // 立即銷毀本地 token
+    checkoutToken = null;
 
     fetch(GAS_URL, { method: 'POST', body: JSON.stringify(payload) })
       .then(res => res.json())
       .then(res => {
+        overlay.style.display = 'none'; // 遮罩收起
         if (res.status === "error") {
           alert(res.message);
           submitBtn.textContent = '送出失敗，請重新整理頁面';
         } else {
-          document.getElementById('res-time').textContent = new Date().toLocaleString();
-          document.getElementById('res-id').textContent   = res.orderId;
+          document.getElementById('res-time').textContent  = new Date().toLocaleString();
+          document.getElementById('res-id').textContent    = res.orderId;
           document.getElementById('res-total').textContent = res.totalPrice;
 
           const itemsDiv = document.getElementById('res-items');
@@ -330,15 +334,15 @@
         }
       })
       .catch(() => {
+        overlay.style.display = 'none';
         alert('系統連線異常，請再試一次');
         submitBtn.textContent = '送出失敗，請重新整理頁面';
+        submitBtn.disabled    = false; // 網路失敗允許重試
       });
   }
 
-  // ── 返回修改（含確認 + 送單中鎖定）──
+  // ── 返回修改 ──
   function confirmBackToMenu() {
-    // Bug2 修正：送單進行中，JS 旗標直接擋掉，即使按鈕 disabled 失效也安全
-    if (isSubmitting) return;
     if (confirm('確定要返回修改嗎？\n（已選餐點不會清除）')) {
       switchView('view-menu');
     }
