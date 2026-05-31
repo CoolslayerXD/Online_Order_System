@@ -24,20 +24,19 @@
     .hidden { display: none; }
     .order-box { background: #fdf2e9; padding: 15px; border-radius: 5px; border: 2px dashed #e67e22; margin-bottom: 15px; }
     .error-box { text-align: center; padding: 30px; color: #e74c3c; }
-    /* 確認頁訂單列表 */
     .confirm-item { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #f0e0d0; }
     .confirm-total { display: flex; justify-content: space-between; font-weight: bold; margin-top: 10px; font-size: 16px; }
-    /* 成功頁品項列表 */
     .success-item { padding: 4px 0; color: #555; }
   </style>
 </head>
 <body>
-<!-- Bug2 修正：送單中的全螢幕遮罩，物理覆蓋一切操作 -->
 <div id="submit-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:9999; align-items:center; justify-content:center;">
   <div style="background:white; padding:30px 40px; border-radius:12px; text-align:center; box-shadow:0 8px 32px rgba(0,0,0,0.3);">
     <div style="font-size:36px; margin-bottom:12px;">⏳</div>
     <p style="font-size:18px; font-weight:bold; margin:0 0 8px;">訂單處理中...</p>
     <p style="color:#7f8c8d; margin:0; font-size:14px;">請稍候，請勿關閉此頁面</p>
+    <!-- 修復3：顯示剩餘等待時間，讓使用者知道系統還在運作 -->
+    <p id="overlay-timer" style="color:#e67e22; margin:8px 0 0; font-size:13px;"></p>
   </div>
 </div>
 <div class="container">
@@ -82,20 +81,55 @@
 
 <script>
   const GAS_URL = "https://script.google.com/macros/s/AKfycbxLgIJFuF4Dpw0UKjh-p25jr6nCeKEE7E_XRy9ZfHQK-uNoaUUFjjQOjU812SDn2PcWFw/exec";
+  // 修復3：fetch 逾時時間（毫秒）
+  const FETCH_TIMEOUT_MS = 35000;
 
   let menuData        = [];
   let cart            = {};
   let currentCategory = '馬來西亞';
   let checkoutToken   = null;
+  let overlayTimerInterval = null;
 
-  // ── 載入菜單（只執行一次）──
+  // 修復3：帶逾時的 fetch，超過 35 秒自動放棄
+  function fetchWithTimeout(url, options, timeoutMs) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    return fetch(url, { ...options, signal: controller.signal })
+      .finally(() => clearTimeout(timer));
+  }
+
+  // 修復3：遮罩上的倒數計時器
+  function startOverlayTimer(seconds) {
+    let remaining = seconds;
+    const timerEl = document.getElementById('overlay-timer');
+    timerEl.textContent = '最長等待 ' + remaining + ' 秒...';
+    overlayTimerInterval = setInterval(() => {
+      remaining--;
+      if (remaining > 0) {
+        timerEl.textContent = '最長等待 ' + remaining + ' 秒...';
+      } else {
+        clearInterval(overlayTimerInterval);
+        timerEl.textContent = '即將回報結果...';
+      }
+    }, 1000);
+  }
+
+  function stopOverlayTimer() {
+    if (overlayTimerInterval) {
+      clearInterval(overlayTimerInterval);
+      overlayTimerInterval = null;
+    }
+    document.getElementById('overlay-timer').textContent = '';
+  }
+
   fetch(GAS_URL + "?action=getMenu")
     .then(res => res.json())
     .then(data => {
+      // 修復2：Token 有效期已在後端延長至 30 分鐘，此處存下備用
       checkoutToken = data.checkoutToken;
       menuData = data.menu;
       menuData.forEach(item => { cart[String(item.id)] = 0; });
-      renderAllItems(); // Bug1 根本修正：只渲染一次，之後用 CSS 切換
+      renderAllItems();
       switchView('view-menu');
     })
     .catch(() => {
@@ -103,11 +137,9 @@
       switchView('view-error');
     });
 
-  // ── Bug1 根本修正：一次渲染所有分類的餐點，切換時只改 display ──
   function renderAllItems() {
     const list = document.getElementById('menu-list');
     list.innerHTML = '';
-
     if (menuData.length === 0) {
       const p = document.createElement('p');
       p.style.cssText = 'text-align:center; color:#95a5a6; padding:20px;';
@@ -115,45 +147,32 @@
       list.appendChild(p);
       return;
     }
-
     menuData.forEach(item => {
       const sid      = String(item.id);
       const category = item.category || '馬來西亞';
-
-      const wrapper = document.createElement('div');
+      const wrapper  = document.createElement('div');
       wrapper.className = 'menu-item';
       wrapper.dataset.category = category;
-      // 非當前分類的餐點先隱藏
       wrapper.style.display = (category === currentCategory) ? 'flex' : 'none';
-
-      // 左側資訊
       const infoDiv = document.createElement('div');
       infoDiv.className = 'item-info';
-
       const topDiv = document.createElement('div');
-
       const nameDiv = document.createElement('div');
       nameDiv.className = 'item-name';
       nameDiv.textContent = item.name;
-
       const priceSpan = document.createElement('span');
       priceSpan.className = 'item-price';
       priceSpan.textContent = '$' + item.price;
-
       const stockSpan = document.createElement('span');
       stockSpan.id = 'stock-msg-' + sid;
       stockSpan.className = 'stock-warning';
-      if (item.stock === 0)       stockSpan.textContent = '已售罄';
-      else if (item.stock <= 10)  stockSpan.textContent = '最後 ' + item.stock + ' 份';
-
+      if (item.stock === 0)      stockSpan.textContent = '已售罄';
+      else if (item.stock <= 10) stockSpan.textContent = '最後 ' + item.stock + ' 份';
       topDiv.appendChild(nameDiv);
       topDiv.appendChild(priceSpan);
       topDiv.appendChild(stockSpan);
-
-      // 數量控制
       const qtyDiv = document.createElement('div');
       qtyDiv.className = 'qty-controls';
-
       const minusBtn = document.createElement('button');
       minusBtn.className = 'qty-btn';
       minusBtn.textContent = '-';
@@ -161,12 +180,10 @@
       minusBtn.dataset.id = sid;
       minusBtn.dataset.change = '-1';
       minusBtn.addEventListener('click', handleQtyClick);
-
       const qtySpan = document.createElement('span');
       qtySpan.id = 'qty-' + sid;
       qtySpan.style.cssText = 'font-size:18px; font-weight:bold; width:20px; text-align:center;';
-      qtySpan.textContent = '0';   // 初始值永遠是 0，之後由 updateQty 更新
-
+      qtySpan.textContent = '0';
       const plusBtn = document.createElement('button');
       plusBtn.className = 'qty-btn';
       plusBtn.textContent = '+';
@@ -174,37 +191,28 @@
       plusBtn.dataset.id = sid;
       plusBtn.dataset.change = '1';
       plusBtn.addEventListener('click', handleQtyClick);
-
       qtyDiv.appendChild(minusBtn);
       qtyDiv.appendChild(qtySpan);
       qtyDiv.appendChild(plusBtn);
-
       infoDiv.appendChild(topDiv);
       infoDiv.appendChild(qtyDiv);
-
-      // 右側圖片
       const img = document.createElement('img');
       img.className = 'item-image';
       img.alt = item.name;
       const imgSrc = String(item.image || '');
       img.src = (imgSrc.startsWith('https://') || (!imgSrc.startsWith('http') && !imgSrc.startsWith('//')))
         ? imgSrc : 'myimage.jpg';
-
       wrapper.appendChild(infoDiv);
       wrapper.appendChild(img);
       list.appendChild(wrapper);
     });
   }
 
-  // ── 切換分類：只改 display，DOM 和 qty 值完全保留 ──
   function switchCategory(category) {
     currentCategory = category;
-
     document.querySelectorAll('.tab').forEach(tab => {
       tab.classList.toggle('active', tab.innerText === category);
     });
-
-    // Bug1 根本修正：不重建 DOM，只切換可見性
     document.querySelectorAll('#menu-list .menu-item').forEach(el => {
       el.style.display = (el.dataset.category === category) ? 'flex' : 'none';
     });
@@ -217,16 +225,11 @@
   function updateQty(sid, change) {
     const item = menuData.find(m => String(m.id) === sid);
     if (!item) return;
-
     const newQty = (cart[sid] || 0) + change;
     if (newQty < 0) return;
     if (newQty > item.stock) { alert('【' + item.name + '】已達庫存上限！'); return; }
-
     cart[sid] = newQty;
-
-    // Bug1 修正：DOM 元素一直存在（未被清除），getElementById 永遠能找到
     document.getElementById('qty-' + sid).textContent = newQty;
-
     const remain = item.stock - newQty;
     const msgSpan = document.getElementById('stock-msg-' + sid);
     if (remain === 0)      msgSpan.textContent = '已達購買上限';
@@ -234,85 +237,72 @@
     else                   msgSpan.textContent = '';
   }
 
-  // ── 確認頁 ──
   function goToConfirm() {
     const summaryDiv = document.getElementById('order-summary');
     summaryDiv.innerHTML = '';
-
-    let total    = 0;
-    let hasItem  = false;
-    const frag   = document.createDocumentFragment();
-
+    let total = 0, hasItem = false;
+    const frag = document.createDocumentFragment();
     menuData.forEach(item => {
       const sid = String(item.id);
       if (cart[sid] > 0) {
         hasItem = true;
         const sub = cart[sid] * item.price;
         total += sub;
-
         const row = document.createElement('div');
         row.className = 'confirm-item';
-
         const nameSpan = document.createElement('span');
         nameSpan.textContent = item.name + ' × ' + cart[sid];
-
         const priceSpan = document.createElement('span');
         priceSpan.textContent = '$' + sub;
-
         row.appendChild(nameSpan);
         row.appendChild(priceSpan);
         frag.appendChild(row);
       }
     });
-
     if (!hasItem) { alert('請先選擇餐點！'); return; }
-
     const hr = document.createElement('hr');
     frag.appendChild(hr);
-
-    const totalRow   = document.createElement('div');
+    const totalRow = document.createElement('div');
     totalRow.className = 'confirm-total';
     const totalLabel = document.createElement('span');
     totalLabel.textContent = '總計';
-    const totalAmt   = document.createElement('span');
+    const totalAmt = document.createElement('span');
     totalAmt.style.color = '#e67e22';
     totalAmt.textContent = '$' + total;
     totalRow.appendChild(totalLabel);
     totalRow.appendChild(totalAmt);
     frag.appendChild(totalRow);
-
     summaryDiv.appendChild(frag);
     switchView('view-confirm');
   }
 
-  // ── 送出訂單 ──
   function submitOrder() {
     if (!checkoutToken) {
       alert('結帳憑證已失效，請重新整理頁面後再試！');
       return;
     }
-
-    // Bug2 根本修正：顯示全螢幕遮罩，物理阻斷所有點擊
-    const overlay = document.getElementById('submit-overlay');
-    overlay.style.display = 'flex';
-
+    const overlay   = document.getElementById('submit-overlay');
     const submitBtn = document.getElementById('btn-submit');
+    overlay.style.display = 'flex';
     submitBtn.textContent = '處理中...';
     submitBtn.disabled    = true;
+    // 修復3：啟動遮罩倒數計時
+    startOverlayTimer(Math.floor(FETCH_TIMEOUT_MS / 1000));
 
     const finalCart = [];
     menuData.forEach(item => {
       const sid = String(item.id);
       if (cart[sid] > 0) finalCart.push({ id: item.id, name: item.name, qty: cart[sid] });
     });
-
     const payload = { cart: finalCart, checkoutToken: checkoutToken };
     checkoutToken = null;
 
-    fetch(GAS_URL, { method: 'POST', body: JSON.stringify(payload) })
+    // 修復3：使用帶逾時的 fetch，35 秒後自動放棄
+    fetchWithTimeout(GAS_URL, { method: 'POST', body: JSON.stringify(payload) }, FETCH_TIMEOUT_MS)
       .then(res => res.json())
       .then(res => {
-        overlay.style.display = 'none'; // 遮罩收起
+        stopOverlayTimer();
+        overlay.style.display = 'none';
         if (res.status === "error") {
           alert(res.message);
           submitBtn.textContent = '送出失敗，請重新整理頁面';
@@ -320,7 +310,6 @@
           document.getElementById('res-time').textContent  = new Date().toLocaleString();
           document.getElementById('res-id').textContent    = res.orderId;
           document.getElementById('res-total').textContent = res.totalPrice;
-
           const itemsDiv = document.getElementById('res-items');
           itemsDiv.innerHTML = '';
           res.itemsDetails.split(', ').forEach(line => {
@@ -329,19 +318,23 @@
             p.textContent = line;
             itemsDiv.appendChild(p);
           });
-
           switchView('view-success');
         }
       })
-      .catch(() => {
+      .catch(err => {
+        stopOverlayTimer();
         overlay.style.display = 'none';
-        alert('系統連線異常，請再試一次');
+        // 修復1+3：區分「逾時/系統繁忙」和「一般網路錯誤」
+        if (err.name === 'AbortError') {
+          alert('⚠️ 系統目前非常繁忙，您的訂單可能尚未成立。\n\n請稍等 30 秒後重新整理頁面，若訂單未出現再重新點餐。');
+        } else {
+          alert('系統連線異常，請稍後再試一次。');
+        }
         submitBtn.textContent = '送出失敗，請重新整理頁面';
-        submitBtn.disabled    = false; // 網路失敗允許重試
+        submitBtn.disabled    = false;
       });
   }
 
-  // ── 返回修改 ──
   function confirmBackToMenu() {
     if (confirm('確定要返回修改嗎？\n（已選餐點不會清除）')) {
       switchView('view-menu');
