@@ -23,16 +23,18 @@
     .order-card.unpaid { border-left-color: #e74c3c; }
     .order-card.paid   { border-left-color: #27ae60; }
     .order-card.cancel { border-left-color: #7f8c8d; opacity: 0.7; }
-    .card-time    { font-size: 12px; color: #666; margin-bottom: 4px; }
-    .card-id      { font-size: 18px; font-weight: bold; display: block; margin-bottom: 6px; }
-    .card-items   { margin: 8px 0; font-weight: bold; color: #2980b9; }
-    .card-total   { color: #d35400; font-weight: bold; }
+    .card-time  { font-size: 12px; color: #666; margin-bottom: 4px; }
+    .card-id    { font-size: 18px; font-weight: bold; display: block; margin-bottom: 6px; }
+    .card-items { margin: 8px 0; font-weight: bold; color: #2980b9; }
+    .card-total { color: #d35400; font-weight: bold; }
     .actions { display: flex; gap: 10px; margin-top: 10px; }
     .btn { flex: 1; padding: 8px; border: none; border-radius: 4px; cursor: pointer; color: white; font-weight: bold; }
     .btn-pay    { background: #27ae60; }
     .btn-cancel { background: #e74c3c; }
     .btn:hover    { filter: brightness(1.1); }
     .btn:disabled { background: #bdc3c7; cursor: not-allowed; }
+    /* 修復4：顯示訂單筆數上限提示 */
+    .order-limit-notice { font-size: 12px; color: #e67e22; text-align: center; padding: 6px; background: #fdf2e9; border-radius: 4px; margin-bottom: 10px; display: none; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
   </style>
 </head>
@@ -51,14 +53,18 @@
 <div class="board">
   <div class="column col-unpaid">
     <h3>未付款</h3>
+    <!-- 修復4：超過上限時顯示提示 -->
+    <div id="limit-notice-unpaid" class="order-limit-notice"></div>
     <div id="list-unpaid">請先輸入管理員密碼...</div>
   </div>
   <div class="column col-paid">
     <h3>已付款</h3>
+    <div id="limit-notice-paid" class="order-limit-notice"></div>
     <div id="list-paid"></div>
   </div>
   <div class="column col-cancel">
     <h3>不成立</h3>
+    <div id="limit-notice-cancel" class="order-limit-notice"></div>
     <div id="list-cancel"></div>
   </div>
 </div>
@@ -66,8 +72,10 @@
 <audio id="notificationSound" src="usagi.mp3" preload="auto"></audio>
 
 <script>
-  // Issue 6：GAS URL 由 GitHub Actions 在部署時從 Secret 注入，原始碼不含真實網址
   const GAS_URL = "https://script.google.com/macros/s/AKfycbxLgIJFuF4Dpw0UKjh-p25jr6nCeKEE7E_XRy9ZfHQK-uNoaUUFjjQOjU812SDn2PcWFw/exec";
+  // 修復4：每欄最多顯示幾筆（避免大量訂單讓 GAS 讀寫越來越慢）
+  const MAX_DISPLAY_PER_COL = 50;
+
   let lastOrderCount = 0;
   let soundEnabled   = false;
   let adminToken     = "";
@@ -93,7 +101,6 @@
     }
   }
 
-  // ── Issue 2：getOrders 改為 POST，token 放 body，不放 URL ──
   function loadOrders() {
     if (!adminToken) return;
     document.getElementById('last-update').textContent = "🔄 同步中...";
@@ -113,6 +120,7 @@
           return;
         }
 
+        // 新單音效
         if (lastOrderCount !== 0 && data.length > lastOrderCount && soundEnabled) {
           document.getElementById('notificationSound').play();
         }
@@ -122,13 +130,38 @@
         ['list-unpaid', 'list-paid', 'list-cancel'].forEach(id => {
           document.getElementById(id).innerHTML = '';
         });
+        ['limit-notice-unpaid', 'limit-notice-paid', 'limit-notice-cancel'].forEach(id => {
+          const el = document.getElementById(id);
+          el.style.display = 'none';
+          el.textContent = '';
+        });
 
-        // Issue 5：用 DOM API 建立訂單卡片，所有訂單資料用 textContent
+        // 修復4：各欄分別計數，超過上限只顯示最新的 MAX_DISPLAY_PER_COL 筆
+        const buckets = { '未付款': [], '已付款': [], '不成立': [] };
         data.forEach(order => {
-          const card = createOrderCard(order);
-          if (order.status === '未付款')  document.getElementById('list-unpaid').appendChild(card);
-          if (order.status === '已付款')  document.getElementById('list-paid').appendChild(card);
-          if (order.status === '不成立')  document.getElementById('list-cancel').appendChild(card);
+          if (buckets[order.status]) buckets[order.status].push(order);
+        });
+
+        const colMap = {
+          '未付款': { list: 'list-unpaid',  notice: 'limit-notice-unpaid'  },
+          '已付款': { list: 'list-paid',    notice: 'limit-notice-paid'    },
+          '不成立': { list: 'list-cancel',  notice: 'limit-notice-cancel'  }
+        };
+
+        Object.entries(buckets).forEach(([status, orders]) => {
+          const { list: listId, notice: noticeId } = colMap[status];
+          const listEl   = document.getElementById(listId);
+          const noticeEl = document.getElementById(noticeId);
+
+          if (orders.length > MAX_DISPLAY_PER_COL) {
+            noticeEl.textContent = '⚠️ 共 ' + orders.length + ' 筆，僅顯示最新 ' + MAX_DISPLAY_PER_COL + ' 筆';
+            noticeEl.style.display = 'block';
+          }
+
+          // 只取最新的 MAX_DISPLAY_PER_COL 筆（data 已經是 reverse 順序）
+          orders.slice(0, MAX_DISPLAY_PER_COL).forEach(order => {
+            listEl.appendChild(createOrderCard(order));
+          });
         });
 
         const now = new Date();
@@ -140,37 +173,31 @@
       });
   }
 
-  // ── Issue 5：改用 DOM API 建立卡片，所有文字用 textContent ──
   function createOrderCard(order) {
     const cssClass = order.status === '未付款' ? 'unpaid' : order.status === '已付款' ? 'paid' : 'cancel';
     const card = document.createElement('div');
     card.className = 'order-card ' + cssClass;
 
-    // 時間
     const timeDiv = document.createElement('div');
     timeDiv.className = 'card-time';
     timeDiv.textContent = new Date(order.time).toLocaleString();
     card.appendChild(timeDiv);
 
-    // 訂單號
     const idSpan = document.createElement('strong');
     idSpan.className = 'card-id';
-    idSpan.textContent = order.orderId; // textContent，防 XSS
+    idSpan.textContent = order.orderId;
     card.appendChild(idSpan);
 
-    // 品項
     const itemsDiv = document.createElement('div');
     itemsDiv.className = 'card-items';
-    itemsDiv.textContent = order.items; // textContent，防 XSS
+    itemsDiv.textContent = order.items;
     card.appendChild(itemsDiv);
 
-    // 總額
     const totalDiv = document.createElement('div');
     totalDiv.className = 'card-total';
-    totalDiv.textContent = '總額：$' + order.totalPrice; // 數字，安全
+    totalDiv.textContent = '總額：$' + order.totalPrice;
     card.appendChild(totalDiv);
 
-    // 操作按鈕
     const actionsDiv = document.createElement('div');
     actionsDiv.className = 'actions';
 
@@ -178,15 +205,14 @@
       const payBtn = document.createElement('button');
       payBtn.className = 'btn btn-pay';
       payBtn.textContent = '✔ 已付款';
-      // Issue 5：用 dataset 傳遞 orderId，不拼入 onclick 字串
-      payBtn.dataset.orderId = order.orderId;
+      payBtn.dataset.orderId   = order.orderId;
       payBtn.dataset.newStatus = '已付款';
       payBtn.addEventListener('click', handleStatusClick);
 
       const cancelBtn = document.createElement('button');
       cancelBtn.className = 'btn btn-cancel';
       cancelBtn.textContent = '✖ 退單(還庫存)';
-      cancelBtn.dataset.orderId = order.orderId;
+      cancelBtn.dataset.orderId   = order.orderId;
       cancelBtn.dataset.newStatus = '不成立';
       cancelBtn.addEventListener('click', handleStatusClick);
 
@@ -207,13 +233,9 @@
   }
 
   function handleStatusClick(e) {
-    const btn       = e.currentTarget;
-    const orderId   = btn.dataset.orderId;
-    const newStatus = btn.dataset.newStatus;
-    updateStatus(orderId, newStatus, btn);
+    updateStatus(e.currentTarget.dataset.orderId, e.currentTarget.dataset.newStatus, e.currentTarget);
   }
 
-  // ── Issue 2：updateStatus 改為 POST，token 放 body，不放 URL ──
   function updateStatus(orderId, newStatus, btnElement) {
     const msg = newStatus === '不成立'
       ? '確定要將 [' + orderId + '] 標記為不成立？\n(系統將自動退還對應庫存)'
@@ -225,12 +247,7 @@
 
       fetch(GAS_URL, {
         method: 'POST',
-        body: JSON.stringify({
-          action:    "updateStatus",
-          token:     adminToken,
-          orderId:   orderId,
-          status:    newStatus
-        })
+        body: JSON.stringify({ action: "updateStatus", token: adminToken, orderId, status: newStatus })
       })
         .then(res => res.json())
         .then(res => {
