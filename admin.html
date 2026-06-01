@@ -20,9 +20,11 @@
     .col-paid   h3 { border-color: #27ae60; color: #27ae60; }
     .col-cancel h3 { border-color: #7f8c8d; color: #7f8c8d; }
     .order-card { background: #f9f9f9; border: 1px solid #ddd; border-left: 5px solid #ccc; padding: 15px; margin-bottom: 15px; border-radius: 5px; animation: fadeIn 0.5s; }
-    .order-card.unpaid { border-left-color: #e74c3c; }
-    .order-card.paid   { border-left-color: #27ae60; }
-    .order-card.cancel { border-left-color: #7f8c8d; opacity: 0.7; }
+    .order-card.unpaid     { border-left-color: #e74c3c; }
+    .order-card.paid       { border-left-color: #27ae60; }
+    .order-card.cancel     { border-left-color: #7f8c8d; opacity: 0.7; }
+    /* 問題5修復：處理中狀態（GAS crash 後的異常訂單）用橘色警示 */
+    .order-card.processing { border-left-color: #e67e22; background: #fef9f0; }
     .card-time  { font-size: 12px; color: #666; margin-bottom: 4px; }
     .card-id    { font-size: 18px; font-weight: bold; display: block; margin-bottom: 6px; }
     .card-items { margin: 8px 0; font-weight: bold; color: #2980b9; }
@@ -136,13 +138,14 @@
           el.textContent = '';
         });
 
-        // 修復4：各欄分別計數，超過上限只顯示最新的 MAX_DISPLAY_PER_COL 筆
-        const buckets = { '未付款': [], '已付款': [], '不成立': [] };
+        // 問題5修復：加入「處理中」，歸入未付款欄顯示，以橘色警示
+        const buckets = { '未付款': [], '已付款': [], '不成立': [], '處理中': [] };
         data.forEach(order => {
-          if (buckets[order.status]) buckets[order.status].push(order);
+          if (buckets[order.status] !== undefined) buckets[order.status].push(order);
         });
 
         const colMap = {
+          '處理中': { list: 'list-unpaid',  notice: 'limit-notice-unpaid'  }, // 顯示在未付款欄最前面
           '未付款': { list: 'list-unpaid',  notice: 'limit-notice-unpaid'  },
           '已付款': { list: 'list-paid',    notice: 'limit-notice-paid'    },
           '不成立': { list: 'list-cancel',  notice: 'limit-notice-cancel'  }
@@ -174,7 +177,11 @@
   }
 
   function createOrderCard(order) {
-    const cssClass = order.status === '未付款' ? 'unpaid' : order.status === '已付款' ? 'paid' : 'cancel';
+    // 問題5修復：加入「處理中」的 CSS class 對應
+    const cssClass = order.status === '未付款'  ? 'unpaid'
+                   : order.status === '已付款'  ? 'paid'
+                   : order.status === '處理中'  ? 'processing'
+                   : 'cancel';
     const card = document.createElement('div');
     card.className = 'order-card ' + cssClass;
 
@@ -187,6 +194,14 @@
     idSpan.className = 'card-id';
     idSpan.textContent = order.orderId;
     card.appendChild(idSpan);
+
+    // 問題5修復：處理中訂單顯示警示訊息
+    if (order.status === '處理中') {
+      const warnDiv = document.createElement('div');
+      warnDiv.style.cssText = 'color:#e67e22; font-size:12px; font-weight:bold; margin-bottom:4px;';
+      warnDiv.textContent = '⚠️ 異常：庫存可能未完整扣除，請確認後手動處理';
+      card.appendChild(warnDiv);
+    }
 
     const itemsDiv = document.createElement('div');
     itemsDiv.className = 'card-items';
@@ -201,7 +216,7 @@
     const actionsDiv = document.createElement('div');
     actionsDiv.className = 'actions';
 
-    if (order.status === '未付款') {
+    if (order.status === '未付款' || order.status === '處理中') {
       const payBtn = document.createElement('button');
       payBtn.className = 'btn btn-pay';
       payBtn.textContent = '✔ 已付款';
@@ -215,6 +230,18 @@
       cancelBtn.dataset.orderId   = order.orderId;
       cancelBtn.dataset.newStatus = '不成立';
       cancelBtn.addEventListener('click', handleStatusClick);
+
+      // 問題5修復：處理中訂單額外提供「標記為未付款」按鈕（確認庫存已正確扣除後使用）
+      if (order.status === '處理中') {
+        const fixBtn = document.createElement('button');
+        fixBtn.className = 'btn';
+        fixBtn.style.background = '#e67e22';
+        fixBtn.textContent = '🔧 確認正常→未付款';
+        fixBtn.dataset.orderId   = order.orderId;
+        fixBtn.dataset.newStatus = '未付款';
+        fixBtn.addEventListener('click', handleStatusClick);
+        actionsDiv.appendChild(fixBtn);
+      }
 
       actionsDiv.appendChild(payBtn);
       actionsDiv.appendChild(cancelBtn);
