@@ -249,6 +249,15 @@
       const doneSpan = document.createElement('span');
       doneSpan.textContent = '✅ 交易完成';
       actionsDiv.appendChild(doneSpan);
+
+      // 取消已付款訂單：改為不成立並退還庫存
+      const cancelPaidBtn = document.createElement('button');
+      cancelPaidBtn.className = 'btn btn-cancel';
+      cancelPaidBtn.textContent = '✖ 取消訂單(還庫存)';
+      cancelPaidBtn.dataset.orderId   = order.orderId;
+      cancelPaidBtn.dataset.newStatus = '不成立';
+      cancelPaidBtn.addEventListener('click', handleStatusClick);
+      actionsDiv.appendChild(cancelPaidBtn);
     } else {
       const cancelSpan = document.createElement('span');
       cancelSpan.textContent = '⛔ 庫存已退還';
