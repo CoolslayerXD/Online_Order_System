@@ -16,26 +16,26 @@
     .board { display: flex; gap: 20px; overflow-x: auto; }
     .column { flex: 1; min-width: 300px; background: white; border-radius: 8px; padding: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
     .column h3 { text-align: center; padding-bottom: 10px; border-bottom: 3px solid; }
-    .col-unpaid h3 { border-color: #e74c3c; color: #e74c3c; }
-    .col-paid   h3 { border-color: #27ae60; color: #27ae60; }
-    .col-cancel h3 { border-color: #7f8c8d; color: #7f8c8d; }
+    .col-unpaid h3   { border-color: #e74c3c; color: #e74c3c; }
+    .col-paid h3     { border-color: #27ae60; color: #27ae60; }
+    .col-collected h3 { border-color: #7f8c8d; color: #7f8c8d; }
     .order-card { background: #f9f9f9; border: 1px solid #ddd; border-left: 5px solid #ccc; padding: 15px; margin-bottom: 15px; border-radius: 5px; animation: fadeIn 0.5s; }
     .order-card.unpaid     { border-left-color: #e74c3c; }
     .order-card.paid       { border-left-color: #27ae60; }
-    .order-card.cancel     { border-left-color: #7f8c8d; opacity: 0.7; }
-    /* 問題5修復：處理中狀態（GAS crash 後的異常訂單）用橘色警示 */
+    .order-card.collected  { border-left-color: #7f8c8d; opacity: 0.7; }
     .order-card.processing { border-left-color: #e67e22; background: #fef9f0; }
-    .card-time  { font-size: 12px; color: #666; margin-bottom: 4px; }
-    .card-id    { font-size: 18px; font-weight: bold; display: block; margin-bottom: 6px; }
-    .card-items { margin: 8px 0; font-weight: bold; color: #2980b9; }
-    .card-total { color: #d35400; font-weight: bold; }
+    .card-time    { font-size: 12px; color: #666; margin-bottom: 4px; }
+    .card-id      { font-size: 18px; font-weight: bold; display: block; margin-bottom: 6px; }
+    .card-items   { margin: 8px 0; font-weight: bold; color: #2980b9; }
+    .card-item-line { margin: 2px 0; }
+    .card-total   { color: #d35400; font-weight: bold; }
     .actions { display: flex; gap: 10px; margin-top: 10px; }
     .btn { flex: 1; padding: 8px; border: none; border-radius: 4px; cursor: pointer; color: white; font-weight: bold; }
-    .btn-pay    { background: #27ae60; }
-    .btn-cancel { background: #e74c3c; }
+    .btn-pay      { background: #27ae60; }
+    .btn-cancel   { background: #e74c3c; }
+    .btn-collect  { background: #2980b9; }
     .btn:hover    { filter: brightness(1.1); }
     .btn:disabled { background: #bdc3c7; cursor: not-allowed; }
-    /* 修復4：顯示訂單筆數上限提示 */
     .order-limit-notice { font-size: 12px; color: #e67e22; text-align: center; padding: 6px; background: #fdf2e9; border-radius: 4px; margin-bottom: 10px; display: none; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
   </style>
@@ -55,19 +55,18 @@
 <div class="board">
   <div class="column col-unpaid">
     <h3>未付款</h3>
-    <!-- 修復4：超過上限時顯示提示 -->
     <div id="limit-notice-unpaid" class="order-limit-notice"></div>
     <div id="list-unpaid">請先輸入管理員密碼...</div>
   </div>
   <div class="column col-paid">
-    <h3>已付款</h3>
+    <h3>未取餐</h3>
     <div id="limit-notice-paid" class="order-limit-notice"></div>
     <div id="list-paid"></div>
   </div>
-  <div class="column col-cancel">
-    <h3>不成立</h3>
-    <div id="limit-notice-cancel" class="order-limit-notice"></div>
-    <div id="list-cancel"></div>
+  <div class="column col-collected">
+    <h3>已取餐</h3>
+    <div id="limit-notice-collected" class="order-limit-notice"></div>
+    <div id="list-collected"></div>
   </div>
 </div>
 
@@ -75,7 +74,6 @@
 
 <script>
   const GAS_URL = "https://script.google.com/macros/s/AKfycbxLgIJFuF4Dpw0UKjh-p25jr6nCeKEE7E_XRy9ZfHQK-uNoaUUFjjQOjU812SDn2PcWFw/exec";
-  // 修復4：每欄最多顯示幾筆（避免大量訂單讓 GAS 讀寫越來越慢）
   const MAX_DISPLAY_PER_COL = 50;
 
   let lastOrderCount = 0;
@@ -122,33 +120,33 @@
           return;
         }
 
-        // 新單音效
         if (lastOrderCount !== 0 && data.length > lastOrderCount && soundEnabled) {
           document.getElementById('notificationSound').play();
         }
         lastOrderCount = data.length;
 
         // 清空三欄
-        ['list-unpaid', 'list-paid', 'list-cancel'].forEach(id => {
+        ['list-unpaid', 'list-paid', 'list-collected'].forEach(id => {
           document.getElementById(id).innerHTML = '';
         });
-        ['limit-notice-unpaid', 'limit-notice-paid', 'limit-notice-cancel'].forEach(id => {
+        ['limit-notice-unpaid', 'limit-notice-paid', 'limit-notice-collected'].forEach(id => {
           const el = document.getElementById(id);
           el.style.display = 'none';
           el.textContent = '';
         });
 
-        // 問題5修復：加入「處理中」，歸入未付款欄顯示，以橘色警示
-        const buckets = { '未付款': [], '已付款': [], '不成立': [], '處理中': [] };
+        // 任務4：三欄分別對應「未付款/處理中」「已付款（未取餐）」「已取餐」
+        // 不成立已在後端過濾，不會出現在 data 中
+        const buckets = { '未付款': [], '已付款': [], '已取餐': [], '處理中': [] };
         data.forEach(order => {
           if (buckets[order.status] !== undefined) buckets[order.status].push(order);
         });
 
         const colMap = {
-          '處理中': { list: 'list-unpaid',  notice: 'limit-notice-unpaid'  }, // 顯示在未付款欄最前面
-          '未付款': { list: 'list-unpaid',  notice: 'limit-notice-unpaid'  },
-          '已付款': { list: 'list-paid',    notice: 'limit-notice-paid'    },
-          '不成立': { list: 'list-cancel',  notice: 'limit-notice-cancel'  }
+          '處理中': { list: 'list-unpaid',    notice: 'limit-notice-unpaid'    },
+          '未付款': { list: 'list-unpaid',    notice: 'limit-notice-unpaid'    },
+          '已付款': { list: 'list-paid',      notice: 'limit-notice-paid'      },
+          '已取餐': { list: 'list-collected', notice: 'limit-notice-collected' }
         };
 
         Object.entries(buckets).forEach(([status, orders]) => {
@@ -161,7 +159,6 @@
             noticeEl.style.display = 'block';
           }
 
-          // 只取最新的 MAX_DISPLAY_PER_COL 筆（data 已經是 reverse 順序）
           orders.slice(0, MAX_DISPLAY_PER_COL).forEach(order => {
             listEl.appendChild(createOrderCard(order));
           });
@@ -177,25 +174,27 @@
   }
 
   function createOrderCard(order) {
-    // 問題5修復：加入「處理中」的 CSS class 對應
     const cssClass = order.status === '未付款'  ? 'unpaid'
                    : order.status === '已付款'  ? 'paid'
+                   : order.status === '已取餐'  ? 'collected'
                    : order.status === '處理中'  ? 'processing'
-                   : 'cancel';
+                   : 'collected';
     const card = document.createElement('div');
     card.className = 'order-card ' + cssClass;
 
+    // 時間
     const timeDiv = document.createElement('div');
     timeDiv.className = 'card-time';
     timeDiv.textContent = new Date(order.time).toLocaleString();
     card.appendChild(timeDiv);
 
+    // 任務1：直接顯示新格式訂單號（YYYYMMDD-訂單編號-SEQ）
     const idSpan = document.createElement('strong');
     idSpan.className = 'card-id';
     idSpan.textContent = order.orderId;
     card.appendChild(idSpan);
 
-    // 問題5修復：處理中訂單顯示警示訊息
+    // 處理中警示
     if (order.status === '處理中') {
       const warnDiv = document.createElement('div');
       warnDiv.style.cssText = 'color:#e67e22; font-size:12px; font-weight:bold; margin-bottom:4px;';
@@ -203,20 +202,29 @@
       card.appendChild(warnDiv);
     }
 
+    // 任務3：品項每行獨立顯示（含領餐卷號碼）
     const itemsDiv = document.createElement('div');
     itemsDiv.className = 'card-items';
-    itemsDiv.textContent = order.items;
+    order.items.split(', ').forEach(line => {
+      const p = document.createElement('p');
+      p.className = 'card-item-line';
+      p.textContent = line;
+      itemsDiv.appendChild(p);
+    });
     card.appendChild(itemsDiv);
 
+    // 總額
     const totalDiv = document.createElement('div');
     totalDiv.className = 'card-total';
     totalDiv.textContent = '總額：$' + order.totalPrice;
     card.appendChild(totalDiv);
 
+    // 操作按鈕
     const actionsDiv = document.createElement('div');
     actionsDiv.className = 'actions';
 
     if (order.status === '未付款' || order.status === '處理中') {
+      // 任務4a：未付款 → 已付款（進入未取餐欄）或退單
       const payBtn = document.createElement('button');
       payBtn.className = 'btn btn-pay';
       payBtn.textContent = '✔ 已付款';
@@ -231,7 +239,6 @@
       cancelBtn.dataset.newStatus = '不成立';
       cancelBtn.addEventListener('click', handleStatusClick);
 
-      // 問題5修復：處理中訂單額外提供「標記為未付款」按鈕（確認庫存已正確扣除後使用）
       if (order.status === '處理中') {
         const fixBtn = document.createElement('button');
         fixBtn.className = 'btn';
@@ -245,23 +252,31 @@
 
       actionsDiv.appendChild(payBtn);
       actionsDiv.appendChild(cancelBtn);
-    } else if (order.status === '已付款') {
-      const doneSpan = document.createElement('span');
-      doneSpan.textContent = '✅ 交易完成';
-      actionsDiv.appendChild(doneSpan);
 
-      // 取消已付款訂單：改為不成立並退還庫存
+    } else if (order.status === '已付款') {
+      // 任務4c：未取餐 → 已取餐 或 退單(還庫存)
+      const collectBtn = document.createElement('button');
+      collectBtn.className = 'btn btn-collect';
+      collectBtn.textContent = '✔ 已取餐';
+      collectBtn.dataset.orderId   = order.orderId;
+      collectBtn.dataset.newStatus = '已取餐';
+      collectBtn.addEventListener('click', handleStatusClick);
+
       const cancelPaidBtn = document.createElement('button');
       cancelPaidBtn.className = 'btn btn-cancel';
-      cancelPaidBtn.textContent = '✖ 取消訂單(還庫存)';
+      cancelPaidBtn.textContent = '✖ 退單(還庫存)';
       cancelPaidBtn.dataset.orderId   = order.orderId;
       cancelPaidBtn.dataset.newStatus = '不成立';
       cancelPaidBtn.addEventListener('click', handleStatusClick);
+
+      actionsDiv.appendChild(collectBtn);
       actionsDiv.appendChild(cancelPaidBtn);
-    } else {
-      const cancelSpan = document.createElement('span');
-      cancelSpan.textContent = '⛔ 庫存已退還';
-      actionsDiv.appendChild(cancelSpan);
+
+    } else if (order.status === '已取餐') {
+      // 任務4e：已取餐為終態，不顯示任何操作按鈕
+      const doneSpan = document.createElement('span');
+      doneSpan.textContent = '✅ 已完成取餐';
+      actionsDiv.appendChild(doneSpan);
     }
 
     card.appendChild(actionsDiv);
@@ -274,7 +289,9 @@
 
   function updateStatus(orderId, newStatus, btnElement) {
     const msg = newStatus === '不成立'
-      ? '確定要將 [' + orderId + '] 標記為不成立？\n(系統將自動退還對應庫存)'
+      ? '確定要取消 [' + orderId + '] 訂單？\n(系統將自動退還對應庫存)'
+      : newStatus === '已取餐'
+      ? '確認 [' + orderId + '] 已完成取餐？'
       : '確認 [' + orderId + '] 已收款？';
 
     if (confirm(msg)) {
